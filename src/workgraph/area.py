@@ -19,6 +19,8 @@ from . import paths
 AREAS_DIR = Path(__file__).parent / "areas"
 # Node kinds that are structure, not knowledge: excluded from gap checks and summaries.
 STRUCTURAL_KINDS = {"stage", "project", "rationale", "symbol", "external"}
+# Relations a processor adds on its own (the `graflang` processor), which a gap rule may ask for besides the pack's flow relations.
+PROCESSOR_RELATIONS = {"uses", "reads_prompt", "runs", "may_add", "governed_by", "runs_procedure", "raises", "binds"}
 
 
 def make_id(s: str) -> str:
@@ -234,8 +236,8 @@ def validate_pack(name_or_path: str | Path) -> list[str]:
             errs.append(f"expectations[{i}]: needs `stage`, `needs` and `message`")
             continue
         known(e["stage"], f"expectations[{i}].stage")
-        if relations and e["needs"] not in relations:
-            errs.append(f"expectations[{i}]: `needs` {e['needs']!r} is not a flow relation {sorted(relations)}")
+        if relations and e["needs"] not in relations | PROCESSOR_RELATIONS:
+            errs.append(f"expectations[{i}]: `needs` {e['needs']!r} is not a flow relation {sorted(relations)} or a processor relation {sorted(PROCESSOR_RELATIONS)}")
         if e.get("direction", "in") not in ("in", "out"):
             errs.append(f"expectations[{i}]: `direction` must be `in` or `out`")
 

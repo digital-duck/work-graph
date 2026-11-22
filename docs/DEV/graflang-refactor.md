@@ -1,7 +1,7 @@
 # Refactoring work-graph with GraphLang (plan)
 
 Date: 2026-11-22
-Status: plan, decisions recorded in section 8. **Phases 0b (the rename), 1 (the LLM seam) and 2 (`llm_items` as a recipe) and 3 (`workgraph ask`) are done** (2026-11-22, commits `1e15f42` and `0ed9099`); the other phases are not started. Nothing here is done. Written after reading the work-graph tree (`CLAUDE.md`, `README.md`, `pipeline.py`, `processors.py`,
+Status: plan, decisions recorded in section 8. **Phases 0b (the rename), 1 (the LLM seam) and 2 (`llm_items` as a recipe) 3 (`workgraph ask`) and 4 (GraphLang files) are done** (2026-11-22, commits `1e15f42` and `0ed9099`); the other phases are not started. Nothing here is done. Written after reading the work-graph tree (`CLAUDE.md`, `README.md`, `pipeline.py`, `processors.py`,
 `llm.py`, `cc_cli.py`, `query.py`, `pyproject.toml`) and the parts of GraphLang and dd-llm it would touch. What was read and what was not is
 marked; "verify" means a step the plan depends on but nobody has checked yet.
 
@@ -123,12 +123,20 @@ What needs a migration, because work-graph 0.2.0 is on PyPI and people have home
 - **Checked:** 8 scripted tests (grounded first time; repair; an invented id stays UNGROUNDED; no match = 1 call and no answer; the call cap; the command's output and exit code; a missing graph says to build first). Real haiku, 3-call cap, on `examples/`: "Which design decision and which test cover REQ-001?" -> ADR-001 and test_cart.py, grounded; "Who owns the shop product and which processes does it follow?" -> the Payments team, `process:delivery` and `process:sdlc`, grounded; both match the tutorial's section 6. 118 tests pass.
 - **Not done:** the UI Ask tab (the plan said later); gap questions ("which requirements have no test?") are not answered from the gap rules, only from what the matched nodes and their edges show.
 
-### Phase 4: GraphLang files as knowledge-graph artifacts (opt-in per domain pack, see section 8, question 4)
+### Phase 4: GraphLang files as knowledge-graph artifacts (DONE 2026-11-22; opt-in per area pack, listed by `sdlc` and `research`)
 
 - A processor `graflang` in `processors.py` (`REGISTRY`) for `*.graph.yaml` (and `*.bind.yaml`, `graflang.errors.yaml`): nodes for the workflow, each composite (part), prompt, procedure and policy; edges `uses`, `contains`, `reads_prompt`; stage tags from the domain's classifiers.
 - Start with plain YAML parsing (no GraphLang import), so work-graph does not need GraphLang just to index its files. Optionally call GraphLang's loader for the exact flattened facts (cost, capabilities, error codes) when it is installed.
 - Gap rules in the domain pack: a recipe with no test, a prompt no node uses, a part no graph uses, an error code the catalogue does not define.
 - Dogfood: build a workspace over the `graflang` repo and read the result before adding more.
+
+**Result of Phase 4:**
+
+- `processors.p_graflang` (plain YAML, no GraphLang runtime; only `_shipped_error_codes()` reads GraphLang's own catalogue when it is importable) and one line in `sdlc.yaml` and `research.yaml`. Nodes `recipe`, `part`, `bindings`, `error_code`, `policy`, `procedure`; relations `uses`, `reads_prompt`, `runs`, `may_add`, `governed_by`, `runs_procedure`, `raises`, `binds`, INFERRED `verifies` (documented in the README and the user guide). Gap rules in `sdlc`: "recipe has no test", "part is used by no recipe" (the research pack lists the processor, with the part rule, and no test rule); gap rules may now need `PROCESSOR_RELATIONS`.
+- **Findings while building it** (each now has a rule in the code): graphify's own `file` node for the same YAML holds the path slot, so refs to a graph go by `doc_id` (= path); a node label equal to a file name is merged into graphify's file node (bindings are labelled `NAME (bindings)`); files in folders the project ignores (`build/`) must not produce broken-reference warnings; `uses` is also a structural relation in `pipeline.STRUCTURAL_RELATIONS`, which is harmless because that lift works on `file` nodes only.
+- **Dogfood on the `graflang` repo** (35k nodes, 13 s, the GraphLang step 2.4 s): 262 recipes, 212 parts, 32 procedures, 18 policies, 10 error codes, 513 `uses`, 96 `reads_prompt`, 28 `runs`; no part without a user; **164 of 262 recipes show no test**, because 98 are named by a test and most others are tested through a folder listing, which the heuristic cannot see. Real findings: a saved experiment copy (`experiments/code_pipeline/results/.../baseline-prefix/`) points at `.spl` files and a policy that are not there.
+- 4 tests on a small made-up project (every node kind and edge, the warnings, the gap rules, opt-in: `publishing` gets none). 122 pass.
+- **Not done:** the optional use of GraphLang's loader for exact flattened facts (cost, capabilities); `ask` and the UI do not yet know the new kinds specially (they show up as ordinary nodes).
 
 ### Phase 5: embeddings through dd-embed (decided: do it now)
 

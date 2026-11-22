@@ -123,6 +123,10 @@ workgraph build --src ~/projects/app-a --src ~/projects/app-b --area sdlc
 
 `--src` accepts a local folder or a git URL (`https://`, `ssh://`, `git://` or `git@host:path`) and can be repeated. URLs are shallow-cloned into `<home>/src/<name>` (and fast-forwarded on later runs); nothing from the clone is executed. Every `--src` project uses `--area` (default `sdlc`). It cannot be combined with `-c`. The graph is written to `<home>/out/graph.json` like any other build, and `status`, `search` and `ui` then read it.
 
+## GraphLang workflows in a project
+
+If a project holds [GraphLang](https://github.com/digital-duck/graflang) workflows (`*.graph.yaml`), the `sdlc` and `research` packs index them (the `graflang` processor; add the same line to your own pack to opt in, and `workgraph utils validate-pack` accepts the gap rules that ask for `uses`, `reads_prompt`, `runs`, `may_add`, `governed_by`, `runs_procedure`, `raises` or `binds`). You get `recipe` and `part` nodes, their prompts, programs, policies and error codes as linked nodes, so `workgraph search`, `show` and `ask` can answer "what uses this prompt" or "which recipe runs this program". Two checks come with it: "recipe has no test" (a test counts when it names the recipe by path, workflow name or folder name in quotes; a test that builds its list of recipes from a folder listing is not seen) and "part is used by no recipe".
+
 ## Using it on your own projects
 
 **1. Write a `workspace.yaml`** anywhere (paths are relative to the file, absolute paths also work):

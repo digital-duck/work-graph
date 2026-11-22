@@ -282,14 +282,172 @@ def p_llm_items(project: Project, files: list[Path], proc: Processor) -> dict:
     return out
 
 
+# --- GraphLang files (graph.yaml, bind.yaml, graflang.errors.yaml) as artifacts of the project
+
+def _walk_key(obj, key):
+    """Every value stored under `key` anywhere in a nested mapping/list."""
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if k == key:
+                yield v
+            yield from _walk_key(v, key)
+    elif isinstance(obj, list):
+        for v in obj:
+            yield from _walk_key(v, key)
+
+
+def _shipped_error_codes() -> set[str]:
+    try:
+        import graphlang
+        raw = yaml.safe_load((Path(graphlang.__file__).parent / "graflang.errors.yaml").read_text(encoding="utf-8")) or {}
+        return {str(e["code"]) for e in raw.get("errors", []) if isinstance(e, dict) and "code" in e}
+    except Exception:       # GraphLang missing or its catalogue unreadable: every code used must then be defined in the project
+        return set()
+
+
+KIND_WORD = {"prompts": "prompt", "procedures": "procedure", "policies": "policy", "parts": "part"}
+
+
+def _is_test_file(rel: str) -> bool:
+    name = rel.rsplit("/", 1)[-1]
+    return rel.startswith("tests/") or "/tests/" in rel or name.startswith("test_") or name.endswith(("_test.py", "_test.go", ".spec.ts", ".spec.js"))
+
+
+def p_graflang(project: Project, files: list[Path], proc: Processor) -> dict:
+    """GraphLang files, read as plain YAML (no GraphLang runtime needed to index them).
+
+    nodes: `recipe` (a graph.yaml; `part` when it sits in a subfolder of a folder that holds a graph.yaml itself), `bindings` (bind.yaml), `error_code`
+    (graflang.errors.yaml), `policy`, `procedure` (files a graph names), plus a `prompt` node for a prompt file that is not markdown (markdown is a document).
+    edges (refs): `uses` (graph -> part), `reads_prompt`, `runs` (graph -> a tool file in `command:`), `may_add` (MUTATE catalogue), `governed_by` (policy),
+    `runs_procedure`, `raises` (a part's error code -> its definition), `binds` (bind.yaml -> its graph), `verifies` (INFERRED: a test that names the recipe).
+    warnings: a prompt declared but never used, a prompt file no graph names, an error code nobody defines."""
+    out = _empty()
+    graphs = [f for f in files if f.name.endswith(".graph.yaml")]
+    graph_dirs = {f.parent for f in graphs}
+    shipped, made = _shipped_error_codes(), set()
+
+    def node(rel: str, kind: str, label: str, summary: str = "", doc_id: str | None = None, key: str | None = None) -> str:
+        nid = "graf_" + make_id(key or rel)
+        if nid not in made:
+            made.add(nid)
+            out["nodes"].append({"id": nid, "label": label, "file_type": "document", "source_file": rel, "kind": kind,
+                                 "summary": summary[:200], "stages": [], **({"doc_id": doc_id} if doc_id else {})})
+        return nid
+
+    parsed: dict[Path, dict] = {}
+
+    def load(f: Path):
+        if f not in parsed:
+            try:
+                data = yaml.load(f.read_text(encoding="utf-8", errors="replace"), Loader=getattr(yaml, "CSafeLoader", yaml.SafeLoader))
+                parsed[f] = data if isinstance(data, dict) else {}
+            except yaml.YAMLError as e:
+                out["warnings"].append(f"{_rel(project, f)}: not valid YAML ({str(e).splitlines()[0]})")
+                parsed[f] = {}
+        return parsed[f]
+
+    def target(base: Path, value) -> tuple[Path, str] | None:
+        """A path named in a graph, as (file, project-relative path); None for a named part (`cookbook:x`), a missing file, or a path outside the project."""
+        if not isinstance(value, str) or ":" in value.split("/")[0] or not ("/" in value or "." in value):
+            return None
+        p = (base / value).resolve()
+        try:
+            rel = p.relative_to(project.path.resolve()).as_posix() if p.is_file() else None
+        except ValueError:
+            return None
+        return (p, rel) if rel else None
+
+    for f in (g for g in files if g.name == "graflang.errors.yaml"):
+        rel = _rel(project, f)
+        for e in load(f).get("errors") or []:
+            if isinstance(e, dict) and e.get("code"):
+                node(rel, "error_code", str(e["code"]), str(e.get("description", "")), doc_id=str(e["code"]), key=f"{rel}#{e['code']}")
+
+    referenced_prompts: set[str] = set()
+    walked = {_rel(project, w): w for w in walk_project(project)} if graphs else {}           # what the project's ignore rules leave
+    tests = [(r, w) for r, w in walked.items() if w.suffix == ".py" and _is_test_file(r)]
+    test_text: dict[str, str] = {}
+    for f in graphs:
+        rel, data = _rel(project, f), load(f)
+        wf = data.get("workflow") if isinstance(data.get("workflow"), dict) else {}
+        name = str(wf.get("name") or f.name.removesuffix(".graph.yaml"))
+        is_part = f.parent.parent in graph_dirs
+        ins = ", ".join(str(i.get("name")) for i in wf.get("inputs") or [] if isinstance(i, dict))
+        outs = ", ".join(str(o.get("name")) for o in wf.get("outputs") or [] if isinstance(o, dict))
+        desc = str(wf.get("description") or "").strip()
+        me = node(rel, "part" if is_part else "recipe", name, f"{desc} (in: {ins or '-'}; out: {outs or '-'})".strip(),
+                  doc_id=rel)         # refs name a graph by its path; a doc_id wins over the path slot, which graphify's own `file` node of the YAML holds
+        res = data.get("resources") if isinstance(data.get("resources"), dict) else {}
+        text = f.read_text(encoding="utf-8", errors="replace")
+        for kind, relation in (("prompts", "reads_prompt"), ("procedures", "runs_procedure"), ("policies", "governed_by"), ("parts", "uses")):
+            for rname, value in (res.get(kind) or {}).items():
+                t = target(f.parent, value)
+                if kind == "prompts":
+                    if t:
+                        referenced_prompts.add(t[1])
+                    if not re.search(r"(?:prompts\.|prompt_ref:\s*['\"]?(?:prompts\.)?)" + re.escape(str(rname)) + r"\b", text):
+                        out["warnings"].append(f"{rel}: prompt `{rname}` is declared but no node uses it")
+                if t and t[1] not in walked:
+                    continue                                   # a file the project's ignore rules skip (a build/ folder, say) is not a broken reference
+                if not t:
+                    if kind != "parts" or ":" not in str(value).split("/")[0]:          # a named part (`cookbook:x`) is resolved by GraphLang, not by path
+                        out["warnings"].append(f"{rel}: {KIND_WORD[kind]} `{rname}` names {value!r}, which is not a file in the project")
+                    continue
+                if kind == "policies":
+                    node(t[1], "policy", t[0].name, f"policy of {name}")
+                elif kind == "procedures":
+                    node(t[1], "procedure", t[0].name, f"procedure of {name}")
+                elif kind == "prompts" and t[0].suffix.lower() not in _DOC_SUFFIXES:
+                    node(t[1], "prompt", t[0].name, f"prompt of {name}")
+                out["refs"].append({"source": ("id", me), "relation": relation, "target": t[1], "file": rel})
+        for cmd in _walk_key(data, "command"):
+            for part in cmd if isinstance(cmd, list) else []:
+                t = target(f.parent, part)
+                if t and t[1] in walked and t[0].suffix in (".py", ".sh", ".js", ".ts"):
+                    out["refs"].append({"source": ("id", me), "relation": "runs", "target": t[1], "file": rel})
+        for cat in _walk_key(data, "catalogue"):
+            for value in (cat.values() if isinstance(cat, dict) else []):
+                t = target(f.parent, value)
+                if t and t[1] in walked:
+                    out["refs"].append({"source": ("id", me), "relation": "may_add", "target": t[1], "file": rel})
+        for err in wf.get("errors") or []:
+            code = err.get("code") if isinstance(err, dict) else None
+            if code and code not in shipped:
+                out["refs"].append({"source": ("id", me), "relation": "raises", "target": str(code), "file": rel})
+        keys = {name, f.parent.name} if not is_part else set()       # a part's folder is `build` or `check`: too common a word to infer a test from
+        for trel, t in tests:
+            body = test_text.setdefault(trel, t.read_text(encoding="utf-8", errors="replace"))
+            if rel in body or any(f'"{k}"' in body or f"'{k}'" in body for k in keys):
+                out["refs"].append({"source": ("path", trel), "relation": "verifies", "target": rel, "file": trel, "confidence": "INFERRED"})
+
+    for f in (g for g in files if g.name.endswith(".bind.yaml")):
+        rel, data = _rel(project, f), load(f)
+        lim = data.get("limits") if isinstance(data.get("limits"), dict) else {}
+        me = node(rel, "bindings", f.name.removesuffix(".bind.yaml") + " (bindings)", "limits: " + (", ".join(f"{k}={v}" for k, v in lim.items()) or "none"))
+        twin = f.with_name(f.name.removesuffix(".bind.yaml") + ".graph.yaml")
+        if twin.is_file() and _rel(project, twin) in walked:
+            out["refs"].append({"source": ("id", me), "relation": "binds", "target": _rel(project, twin), "file": rel})
+
+    for g in graphs:                                   # a prompt file in a graph's own prompts/ folder that no graph in that folder names
+        d = g.parent / "prompts"
+        if d.is_dir():
+            mine = {t[1] for gg in graphs if gg.parent == g.parent for t in [target(g.parent, str(v)) for v in
+                    ((load(gg).get("resources") or {}).get("prompts") or {}).values()] if t}
+            for pf in sorted(d.iterdir()):
+                if pf.is_file() and _rel(project, pf) not in mine and _rel(project, pf) not in referenced_prompts:
+                    out["warnings"].append(f"{_rel(project, pf)}: prompt file that no graph in {_rel(project, g.parent)} names")
+    return out
+
+
 REGISTRY: dict[str, Callable[[Project, list[Path], Processor], dict]] = {
     "ast": p_ast, "frontmatter": p_frontmatter, "annotations": p_annotations, "llm": p_llm,
-    "llm_items": p_llm_items, "claude_memory": p_claude_memory,
+    "llm_items": p_llm_items, "claude_memory": p_claude_memory, "graflang": p_graflang,
 }
 
 
 STEP_LABELS = {"ast": "code (tree-sitter)", "frontmatter": "documents", "annotations": "annotations",
-               "llm": "LLM extraction", "llm_items": "LLM extraction", "claude_memory": "Claude Code memory"}
+               "llm": "LLM extraction", "llm_items": "LLM extraction", "claude_memory": "Claude Code memory",
+               "graflang": "GraphLang files"}
 
 
 def run_processors(project: Project, *, semantic: bool = False, steps: list | None = None) -> dict:

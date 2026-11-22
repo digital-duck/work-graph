@@ -29,6 +29,8 @@ expectations:
   - {stage: build,       kinds: [file],        needs: verifies,  direction: in, message: "code file has no test",
      min_symbols: 1, exclude: ["**/__init__.py", "**/*.config.*", "**/scripts/**", "**/alembic/**", "**/*.sh", "**/setup.py", "**/conftest.py",
                 "**/*.yaml", "**/*.yml", "**/*.json", "**/*.toml", "**/*.cfg", "**/*.ini"]}   # config and data files are not code, whatever graphify parses
+  - {stage: build, kinds: [recipe], needs: verifies, direction: in, message: "recipe has no test"}
+  - {stage: build, kinds: [part],   needs: uses,     direction: in, message: "part is used by no recipe"}
 
 # Path rules -> stage tags (case-insensitive). Every matching rule adds a tag; `default` applies if none matched.
 classifiers:
@@ -59,6 +61,7 @@ processors:
   - {name: code,        use: ast}
   - {name: docs,        use: frontmatter, match: ["**/*.md"]}
   - {name: annotations, use: annotations, match: ["**/*.py", "**/*.js", "**/*.ts", "**/*.go", "**/*.sql", "**/*.sh"]}
+  - {name: graflang,    use: graflang, match: ["**/*.graph.yaml", "**/*.bind.yaml", "**/graflang.errors.yaml"]}   # GraphLang workflows: recipes, parts, prompts, policies
   # LLM passes (only with --semantic). `llm_items` uses this pack's own prompt: it reads planning/design
   # prose and extracts work items as INFERRED nodes tagged with this pack's stages.
   - {name: doc-items,   use: llm_items, kinds: [requirement, decision, task],

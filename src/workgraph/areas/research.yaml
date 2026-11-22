@@ -22,6 +22,7 @@ expectations:
   - {stage: question,   kinds: [question],   needs: answers,  direction: in, message: "question has no hypothesis"}
   - {stage: hypothesis, kinds: [hypothesis], needs: tests,    direction: in, message: "hypothesis has no experiment"}
   - {stage: experiment, kinds: [file],       needs: analyzes, direction: in, message: "experiment has no analysis"}
+  - {stage: experiment, kinds: [part],   needs: uses,     direction: in, message: "part is used by no recipe"}
 
 classifiers:
   - {stage: question,   globs: ["**/questions/**"]}
@@ -37,4 +38,5 @@ processors:
   - {name: code,        use: ast}
   - {name: notes,       use: frontmatter, match: ["**/*.md"]}
   - {name: annotations, use: annotations, match: ["**/*.py", "**/*.R", "**/*.sh", "**/*.sql"]}
+  - {name: graflang,    use: graflang, match: ["**/*.graph.yaml", "**/*.bind.yaml", "**/graflang.errors.yaml"]}   # GraphLang workflows: recipes, parts, prompts, policies
   - {name: papers,      use: llm, match: ["**/*.pdf"], backend: cc_cli}
