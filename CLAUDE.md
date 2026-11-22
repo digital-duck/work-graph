@@ -4,13 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-`workgraph` is a thin layer over [graphify](https://github.com/Graphify-Labs/graphify) (PyPI package `graphifyy`, used as a library) that builds a NetworkX knowledge graph of the software lifecycle and surrounding knowledge. Behavior is adapted per **area pack** (YAML). Early hackathon prototype; see README.md for vision and roadmap (`ask`, visualization, graph reload are not implemented yet).
+`workgraph` is a thin layer over [graphify](https://github.com/Graphify-Labs/graphify) (PyPI package `graphifyy`, used as a library) that builds a NetworkX knowledge graph of the software lifecycle and surrounding knowledge. Behavior is adapted per **area pack** (YAML). Early hackathon prototype; see README.md for vision and roadmap (README's "planned" markers can lag the code: `ask` and `viz` exist now).
 
 ## Commands
 
 ```bash
 conda create -n graf python=3.11 pip -y && conda activate graf   # dedicated env; always use `python -m pip`
-python -m pip install -e ".[dev]"      # extras: dev, bedrock, leiden, mcp. streamlit, dd-llm, graflang and dd-embed[sentence-transformers,ollama] (PyTorch) are default dependencies
+python -m pip install -e ".[dev]"      # extras: dev, bedrock, leiden, mcp, viz (pyvis). streamlit, dd-llm, graflang and dd-embed[sentence-transformers,ollama] (PyTorch) are default dependencies
 workgraph utils doctor                      # warns [!!] if running in conda base
 
 python -m pytest                       # all tests (tests/)
@@ -58,6 +58,12 @@ Pipeline (`src/workgraph/pipeline.py::build_workspace`): for each project in a `
 **Claude Code integration** (`claude_code.py`, `tracking.py`): `workgraph hook session-start|session-end` are Claude Code hook handlers (JSON on stdin). Start tracks the project, logs the session and prints a graph summary that becomes session context; end records changed files and rebuilds in the background. Handlers must never raise or block. `claude-setup --write` merges them into `~/.claude/settings.json`; do not run that without the user asking.
 
 **Search and UI** (`query.py`, `ui/streamlit/app.py`): `query.py` is UI-free (load graph.json, `build_docs`, `keyword_search`, `semantic_search` with ollama / sbert / TF-IDF backends and an embedding cache in `<home>/cache/embeddings`, `neighbors`, `to_dot`, `gaps_for`). The Streamlit app only calls it, and works with both old and new Streamlit (`WIDE` helper). `ui/` tests use `streamlit.testing.v1.AppTest` and need a working numpy/pyarrow, so run them in a clean env.
+
+**Claude Code import** (`claude_import.py`, read-only on `~/.claude`): the `claude_memory` processor turns a project's Claude Code memory files into `memory` nodes; `workgraph import-claude` tracks the projects Claude Code has worked in and loads session metadata into the journal (never message text).
+
+**Sync** (`syncing.py`, `workgraph sync` / `dump` / `load`): a text "sync tree" of what cannot be rebuilt (portable workspace, domain files, the database's comment/uid/session records as JSONL, optionally the LLM cache), committed to a private git repo or packed as tar.gz. The database itself, built graphs, AST/embedding caches and clones are never shared.
+
+**Format version** (`migrate.py`): `graph.json` carries `graph["workgraph_format"]` (`FORMAT`); an older file is refused with a "rebuild" message. `workgraph utils migrate [--dry-run]` upgrades 0.2.x home folders and workspace keys (idempotent); the loader still accepts old keys with a warning for one release.
 
 **Plugin** (`plugin/`; deliberately NOT published: no `.claude-plugin/marketplace.json` in the repo, the draft is `docs/DEV/marketplace.draft.json`; do not add one or advertise `/plugin marketplace add` until the owner says so): hooks plus `commands/workgraph.md`, which must stay identical to `src/workgraph/data/workgraph-command.md` (a test checks). Plugin commands are namespaced (`/workgraph:workgraph`); `claude-setup --write` installs the plain `/workgraph` as a user command. Validate with `claude plugin validate plugin`. Background rebuilds always pass `-c <home>/workspace.yaml`, never the cwd's.
 

@@ -45,7 +45,7 @@ This is the same graph-first approach as ConceptBook (a book as a graph) and Gra
 
 `workgraph search "checkout test"` is a keyword search (names, paths, summaries and the first lines of each file, with phrase and prefix matching).
 
-`workgraph ask "Which design decision and which test cover REQ-001?"` answers a question in words. A model picks search words, a program collects the matching nodes and their neighbours, the model answers and must cite node ids in square brackets, and a program checks that every cited id is one of the facts it was given. The report says **grounded** (cites real nodes, listed) or **ungrounded** (the answer is shown, marked, and not to be relied on), and when nothing in the graph matches there is no model answer at all. It is the GraphLang recipe `src/workgraph/recipes/ask/`, costs at most 3 model calls (`--max-calls` caps it, default 4), and exits non-zero unless the answer is grounded. `workgraph search "how are carts stored?" --semantic` ranks by meaning with embeddings from a local Ollama model (default `nomic-embed-text`) or sentence-transformers, and says plainly when it had to fall back to lexical TF-IDF. `workgraph show REQ-002` prints one node and its links. `workgraph ui` opens a Streamlit app to browse, filter, search, inspect gaps, see a node's neighbourhood and draw the graph (Map tab). `workgraph viz` draws the graph as an interactive page (`--engine cytoscape|pyvis|graphify|graphviz`).
+`workgraph ask "Which design decision and which test cover REQ-001?"` answers a question in words. A model picks search words, a program collects the matching nodes and their neighbours, the model answers and must cite node ids in square brackets, and a program checks that every cited id is one of the facts it was given. The report says **grounded** (cites real nodes, listed) or **ungrounded** (the answer is shown, marked, and not to be relied on), and when nothing in the graph matches there is no model answer at all. It is the GraphLang recipe `src/workgraph/recipes/ask/`, costs at most 3 model calls (`--max-calls` caps it, default 4), and exits non-zero unless the answer is grounded. `workgraph search "how are carts stored?" --semantic` ranks by meaning with embeddings from a local Ollama model (default `nomic-embed-text`) or sentence-transformers, and says plainly when it had to fall back to lexical TF-IDF. `workgraph show REQ-002` prints one node and its links. `workgraph ui` opens a Streamlit app to browse, filter, search, inspect gaps, see a node's neighbourhood and draw the graph (Map tab). `workgraph viz` draws the graph (`--engine cytoscape|graphviz|mermaid|ascii|pyvis|graphify`; the default `cytoscape` page is interactive and works offline; `--node ID --hops N` draws one neighbourhood).
 
 ### Memory for Claude Code
 
@@ -132,9 +132,9 @@ Shipped packs (`src/workgraph/areas/`): **`sdlc`**, **`research`** (question →
 - **Cross-project links**: byte-identical files get `identical_to` and same-path files that differ get `variant_of`, so clones of a template across repos show up (`workgraph utils clones`).
 - **Ignore rules**: `.gitignore`, `.graphifyignore`, the pack's default `ignore:` (logs, locks, db files) and a per-project `ignore:` list in the workspace file.
 
-### Retrieval: graph + semantic (planned)
+### Retrieval: graph + semantic
 
-Seed nodes by keyword and embedding, expand through the graph, rank and prune, then pass the subgraph to the LLM with node IDs so answers can cite them. graphify's `serve.py` already does the query and subgraph-to-text parts.
+Seed nodes by keyword and (with `--semantic`) embedding, expand to their neighbours and the edges among them, then pass that subgraph to the LLM with node IDs so answers can cite them. `workgraph ask` does this today; a program, not the model, checks every citation. Ranking and pruning larger subgraphs is still to come.
 
 ## What you can ask
 
@@ -187,7 +187,7 @@ Seed nodes by keyword and embedding, expand through the graph, rank and prune, t
 
 ## Tech stack
 
-Python 3.10+ (conda env), NetworkX, graphify (PyPI release), PyYAML. LLM backends come from graphify: Claude (API or `claude-cli`), Bedrock, Gemini, OpenAI, Kimi and Ollama.
+Python 3.10+ (conda env), NetworkX, graphify (PyPI `graphifyy`), ruamel.yaml / PyYAML, Streamlit. Sibling libraries: [dd-llm](https://pypi.org/project/dd-llm/) (every LLM call: Claude Code subscription, Anthropic API, Bedrock, Gemini, OpenAI, Ollama, ...), [dd-embed](https://pypi.org/project/dd-embed/) (embeddings: Ollama, sentence-transformers), [GraphLang](https://github.com/digital-duck/graflang) (`graflang`, runs the recipes in `src/workgraph/recipes/`) and [zinet](https://pypi.org/project/zinet/) (drawing engines and comment-preserving YAML).
 
 ## Documentation
 
@@ -210,10 +210,14 @@ workgraph utils clones -c examples/workspace.yaml           # files shared acros
 workgraph utils check -c examples/workspace.yaml            # validate the org/product domain files and cross-graph references
 workgraph utils convert examples/graphs/product.json        # JSON <-> YAML, YAML comments kept in the store
 workgraph open --semantic --adapter cc_cli -c examples/acme-shop/workspace.yaml   # open work items via the LLM pass
+workgraph search "checkout test"                     # query the last build; also: show NODE, status, ui, viz
+workgraph ask "Which test covers REQ-001?"            # grounded answer citing node ids (a few model calls)
 python -m pytest
 ```
 
 `examples/` holds a small SDLC project (`acme-shop`) and a research project (`rq-demo`) with deliberate gaps, plus a workspace that builds both into one graph. LLM processors are off unless you pass `--semantic`.
+
+Upgrading a home folder from 0.2.x (`domain:` became `area:`, `layer:` became `domain:`): run `workgraph utils migrate` once (`--dry-run` to preview), then `workgraph build` again. See CHANGELOG.md.
 
 ## LLM backends (home vs work)
 
@@ -248,11 +252,14 @@ src/workgraph/
   areas/*.yaml   # area packs: sdlc, research, publishing
   area.py        # Area / Workspace loading, stage-tag validation, path classifiers
   llm.py           # the LLM seam: backend resolution, billing labels, one `complete()` over dd-llm adapters (cc_cli at home, bedrock at work)
-  recipes/         # GraphLang recipes shipped with workgraph (extract_items) and `Recipe`, which runs one through the LLM seam
-  processors.py    # processing domain: ast, frontmatter, annotations, llm, llm_items
+  recipes/         # GraphLang recipes shipped with workgraph (extract_items, ask) and `Recipe`, which runs one through the LLM seam
+  processors.py    # processing: ast, frontmatter, annotations, graflang, llm, llm_items
   links.py         # cross-project identical_to / variant_of edges
   pipeline.py      # tag + link + derive flow edges + cluster (wraps graphify)
+  progress.py      # per-project / per-phase progress and timings for build
   analyze.py       # gap analysis from a pack's expectations
+  viz.py           # workgraph's style and node selection for zinet's drawing engines
+  migrate.py       # utils migrate: 0.2.x -> 0.3.0 words; graph.json format version
   cli.py
 examples/          # acme-shop (sdlc), rq-demo (research), workspace.yaml (both)
 ```
@@ -263,6 +270,7 @@ Multi-graph modules (design in [docs/DEV/README-design.md](https://github.com/di
 src/workgraph/
   schema.py        # domains, kinds, relation rules, validation of domain files
   refs.py          # load domain files, expand /** sub-graph references, merge into the build graph
+  domains.py       # the domain map (domains as nodes) and the per-domain partitions under <out>/domains/
   convert.py       # JSON <-> YAML converters; harvests and re-attaches YAML comments
   store.py         # SQLite: graph-file registry, comment store, uid history, Claude Code session journal
   paths.py         # the home folder (~/workgraph or $WORKGRAPH_HOME) and its layout
@@ -285,7 +293,7 @@ examples/graphs/   # org and product domain files (JSON canonical, YAML for revi
 - [x] Ingest code (tree-sitter) and Markdown with frontmatter; annotations; derived `verifies` edges
 - [x] Gap analysis and broken-reference reporting
 - [x] Persist the graph (`graph.json`) and load it back for search, `show`, `status` and the UI
-- [ ] `ask` command: seed → expand → LLM answer with cited nodes
+- [x] `ask` command: seed → expand → LLM answer with cited nodes, citations checked by a program
 - [x] `workgraph viz`: draw the graph with a choice of engines (see docs/DEV/README-vis.md)
 - [x] Streamlit app to review and query the graph (`workgraph ui`): overview, keyword and semantic search, browse, gaps, a node's links and neighbourhood
 - [ ] Interactive visualization of the whole graph
@@ -305,12 +313,12 @@ examples/graphs/   # org and product domain files (JSON canonical, YAML for revi
 **Stretch**
 - [x] Org domain (company > division > department > group > team > person), kept optional and separable because of privacy
 - [ ] Watch mode: incrementally update the graph as files change
+- [x] Index GraphLang workflow files (recipes, parts, prompts, error codes) with their own gap rules
 - [x] Claude Code integration: hooks (session memory), the `/workgraph` command and a plugin
 - [ ] MCP server so assistants can call search and show as tools
 - [x] Ingest existing Claude Code memory and history (`import-claude`, memory nodes)
 - [x] Sync a workgraph between machines through a private GitHub repository, with a tar.gz for first setup; the database is never shared
 - [ ] Team or enterprise mode (a shared server)
-- [ ] Multi-language code parsing via tree-sitter
 - [ ] Graph health dashboard (orphans, stale docs, superseded decisions)
 
 ## Demo story
