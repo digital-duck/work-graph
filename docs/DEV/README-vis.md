@@ -7,7 +7,7 @@ options we looked at and why the command works the way it does.
 workgraph viz                                    # default engine (cytoscape), readable overview, opens the browser
 workgraph viz --engine pyvis                     # or graphify, graphviz
 workgraph viz --list-engines                     # which engines are ready on this machine
-workgraph viz --layer product                    # filters: --layer --project --kind --stage
+workgraph viz --domain product                    # filters: --domain --project --kind --stage
 workgraph viz --node "Checkout" --hops 2         # one node and its neighbourhood
 workgraph viz --all --max-nodes 800 -o map.html  # include symbols, raise the cap, choose the file
 ```
@@ -32,7 +32,7 @@ So the work is mostly in choosing *what to draw*, and only then in the engine. `
 |---|---|---|
 | Hide `symbol`, `external`, `rationale` nodes | on | `--all` |
 | Hide `in_stage` / `belongs_to` edges into stage and project hubs | on | `--hubs` |
-| Filter by layer, project, kind, stage | none | `--layer --project --kind --stage` |
+| Filter by domain, project, kind, stage | none | `--domain --project --kind --stage` |
 | Neighbourhood of one node (label or id) | off | `--node X --hops N` (default 2) |
 | Keep the best-connected N nodes | 400 | `--max-nodes N` |
 | Drop nodes left with no edges | on | |
@@ -43,11 +43,11 @@ backend, the JavaScript frontend and the process stages as separate clusters.
 
 ## Visual encoding (all engines)
 
-- Colour = layer: repo blue, product green, org orange, process purple.
+- Colour = domain: repo blue, product green, org orange, process purple.
 - Size = degree.
 - Diamond = structure node (stage, project, process).
 - Dashed edge = `INFERRED` or `AMBIGUOUS`; solid = `EXTRACTED`.
-- Tooltip / side panel: kind, layer, project, stages, source file, status, origin.
+- Tooltip / side panel: kind, domain, project, stages, source file, status, origin.
 
 ## Engines
 
@@ -91,7 +91,7 @@ other place to touch.
 `workgraph ui` has a Map tab beside Overview, Search, Browse and Gaps. It draws the same Cytoscape page, embedded in
 the app (`st.iframe`, or `components.html` on older Streamlit), from `viz.select()` with:
 
-- the sidebar filters (layer, project, kind, stage);
+- the sidebar filters (domain, project, kind, stage);
 - "Only around the selected node" plus Hops: pick a node in Search, Browse or Gaps, then open Map;
 - Max nodes, "Symbols and code" and "Stage/project links", which match `--max-nodes`, `--all` and `--hubs`.
 

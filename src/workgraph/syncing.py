@@ -1,6 +1,6 @@
 """Moving a workgraph between machines: a text "sync tree" of everything that cannot be rebuilt.
 
-What is shared: the portable workspace, layer files, the comment / uid / session records of the database as JSONL,
+What is shared: the portable workspace, domain files, the comment / uid / session records of the database as JSONL,
 and optionally the LLM cache. What is never shared: the database itself, built graphs, AST and embedding caches,
 project clones. The same tree is committed to a private git repository (`sync`) or packed into a tar.gz (`export`).
 """
@@ -124,12 +124,13 @@ def _portable_workspace() -> dict:
     return out
 
 
-def _layer_of_graph_file(f: Path) -> str | None:
+def _domain_of_graph_file(f: Path) -> str | None:
     j = f.with_suffix(".json")
     try:
         if j.exists():
-            return json.loads(j.read_text(encoding="utf-8")).get("layer")
-        m = re.search(r"^layer:\s*(\S+)", f.read_text(encoding="utf-8"), re.M)
+            doc = json.loads(j.read_text(encoding="utf-8"))
+            return doc.get("domain") or doc.get("layer")                 # `layer` is the 0.2.x key
+        m = re.search(r"^(?:domain|layer):\s*(\S+)", f.read_text(encoding="utf-8"), re.M)
         return m.group(1) if m else None
     except (OSError, ValueError):
         return None
@@ -152,7 +153,7 @@ def export_tree(dest: Path, parts: set[str], store: Store) -> dict:
     if "graphs" in parts and paths.graphs_dir().is_dir():
         n = 0
         for f in sorted(paths.graphs_dir().iterdir()):
-            if f.suffix in (".json", ".yaml") and _layer_of_graph_file(f) not in excluded:
+            if f.suffix in (".json", ".yaml") and _domain_of_graph_file(f) not in excluded:
                 (dest / "graphs").mkdir(exist_ok=True)
                 shutil.copy2(f, dest / "graphs" / f.name)
                 n += 1
@@ -208,7 +209,7 @@ def _merge_workspace(incoming: dict) -> list[str]:
 
 
 def import_tree(src: Path, store: Store) -> dict:
-    """Apply a sync tree to the live home. Never destroys local work: a layer file changed on both sides keeps the
+    """Apply a sync tree to the live home. Never destroys local work: a domain file changed on both sides keeps the
     local version and puts the incoming one beside it as `<name>.incoming.<ext>`."""
     mf = src / "manifest.json"
     if not mf.exists():

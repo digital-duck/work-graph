@@ -1,7 +1,7 @@
 """Draw the built graph. UI-free: `select` picks a readable subgraph, an engine turns it into a file.
 
 The engines are zinet's (`zinet.vis`); this module only says how a workgraph graph looks and what to leave out:
-colour by layer, circles sized by how connected a node is with the label below, a force layout, dashed edges for what was
+colour by domain, circles sized by how connected a node is with the label below, a force layout, dashed edges for what was
 inferred, and symbols / externals / rationale nodes and stage/project hub edges hidden unless asked for.
 
 Engines (`workgraph viz --engine NAME`):
@@ -22,18 +22,18 @@ from zinet.vis import DEFAULT_ENGINE, DEFAULT_MAX_NODES, ENGINES, Style, graphif
 from . import paths
 from .query import HIDDEN_KINDS
 
-LAYER_COLORS = {"repo": "#4f8ef7", "product": "#2fa84f", "org": "#e08a1e", "process": "#9b59b6"}
+DOMAIN_COLORS = {"repo": "#4f8ef7", "product": "#2fa84f", "org": "#e08a1e", "process": "#9b59b6"}
 OTHER_COLOR = "#8a8f98"
 STRUCTURE_KINDS = {"stage", "project", "process"}
 HUB_RELATIONS = {"in_stage", "belongs_to"}
-INFO_KEYS = ("kind", "layer", "project", "stages", "source_file", "status", "origin")
+INFO_KEYS = ("kind", "domain", "project", "stages", "source_file", "status", "origin")
 
 __all__ = ["DEFAULT_ENGINE", "DEFAULT_MAX_NODES", "ENGINES", "color", "cytoscape_html", "graphify_ready", "hint",
            "open_in_browser", "pyvis_ready", "render", "select", "workgraph_style"]
 
 
 def color(d: dict) -> str:
-    return LAYER_COLORS.get(d.get("layer", ""), OTHER_COLOR)
+    return DOMAIN_COLORS.get(d.get("domain", ""), OTHER_COLOR)
 
 
 def _info(n: str, d: dict) -> str:
@@ -46,20 +46,20 @@ def _size(G: nx.Graph, n: str, d: dict) -> int:
 
 def workgraph_style(title: str = "workgraph") -> Style:
     return Style(
-        label=lambda n, d: str(d.get("label", n)), kind=lambda n, d: d.get("layer"), color=lambda n, d: color(d),
+        label=lambda n, d: str(d.get("label", n)), kind=lambda n, d: d.get("domain"), color=lambda n, d: color(d),
         shape=lambda n, d: "diamond" if d.get("kind") in STRUCTURE_KINDS else "ellipse", info=_info,
         edge_kind=lambda u, v, d: d.get("relation", ""), edge_dashed=lambda u, v, d: d.get("confidence", "EXTRACTED") != "EXTRACTED",
         node_size=_size, arrangement="force", title=title)
 
 
-def select(M: nx.MultiDiGraph, *, layer: str | None = None, project: str | None = None, kind: str | None = None,
+def select(M: nx.MultiDiGraph, *, domain: str | None = None, project: str | None = None, kind: str | None = None,
            stage: str | None = None, node: str | None = None, hops: int = 2, include_code: bool = False,
            hubs: bool = False, max_nodes: int = DEFAULT_MAX_NODES) -> tuple[nx.MultiDiGraph, str]:
     """A readable subgraph of M and a one-line note on what was cut. Symbols, externals and rationale nodes are
     left out unless `include_code`, and stage/project hub edges unless `hubs`; past `max_nodes` the best-connected nodes are kept."""
     return vis.select(
         M,
-        keep=lambda n, d: ((not layer or d.get("layer") == layer) and (not project or d.get("project") == project)
+        keep=lambda n, d: ((not domain or d.get("domain") == domain) and (not project or d.get("project") == project)
                            and (not kind or d.get("kind") == kind) and (not stage or stage in d.get("stages", []))),
         hidden=lambda n, d: d.get("kind") in HIDDEN_KINDS, show_hidden=include_code,
         drop_edge=None if hubs else (lambda G, u, v, d: d.get("relation") in HUB_RELATIONS and G.nodes[v].get("kind") in STRUCTURE_KINDS),

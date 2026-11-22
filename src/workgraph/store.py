@@ -9,13 +9,13 @@ from pathlib import Path
 from . import paths
 
 DDL = """
-CREATE TABLE IF NOT EXISTS files (path TEXT PRIMARY KEY, layer TEXT, json_sha256 TEXT, yaml_sha256 TEXT, updated_at REAL);
+CREATE TABLE IF NOT EXISTS files (path TEXT PRIMARY KEY, domain TEXT, json_sha256 TEXT, yaml_sha256 TEXT, updated_at REAL);
 CREATE TABLE IF NOT EXISTS comments (file TEXT, item_key TEXT, key TEXT, position TEXT, text TEXT, seq INTEGER);
 CREATE INDEX IF NOT EXISTS comments_file ON comments(file);
 CREATE TABLE IF NOT EXISTS sessions (session_id TEXT PRIMARY KEY, project TEXT, cwd TEXT, branch TEXT, head TEXT,
   started REAL, ended REAL, changed TEXT, title TEXT);
 CREATE TABLE IF NOT EXISTS synced (path TEXT PRIMARY KEY, sha256 TEXT);
-CREATE TABLE IF NOT EXISTS node_ids (uid TEXT, id TEXT, layer TEXT, last_seen REAL, PRIMARY KEY (uid, id));
+CREATE TABLE IF NOT EXISTS node_ids (uid TEXT, id TEXT, domain TEXT, last_seen REAL, PRIMARY KEY (uid, id));
 """
 
 
@@ -43,6 +43,10 @@ class Store:
                     break
         self.db = sqlite3.connect(self.path)
         self.db.executescript(DDL)
+        for table in ("files", "node_ids"):             # databases of 0.2.x: the column `layer` is now `domain`
+            have = {r[1] for r in self.db.execute(f"PRAGMA table_info({table})")}
+            if "layer" in have and "domain" not in have:
+                self.db.execute(f"ALTER TABLE {table} RENAME COLUMN layer TO domain")
         cols = {r[1] for r in self.db.execute("PRAGMA table_info(sessions)")}
         if "title" not in cols:                       # databases created before session titles existed
             self.db.execute("ALTER TABLE sessions ADD COLUMN title TEXT")
@@ -58,10 +62,10 @@ class Store:
         self.close()
 
     # --- registry
-    def register(self, base: Path, layer: str | None) -> None:
+    def register(self, base: Path, domain: str | None) -> None:
         """Record a graph file pair (`base` without extension) and its current content hashes."""
         self.db.execute("INSERT OR REPLACE INTO files VALUES (?,?,?,?,?)",
-                        (file_key(base), layer, sha256(base.with_suffix(".json")), sha256(base.with_suffix(".yaml")), time.time()))
+                        (file_key(base), domain, sha256(base.with_suffix(".json")), sha256(base.with_suffix(".yaml")), time.time()))
         self.db.commit()
 
     def registered(self, name: str) -> tuple[str | None, str | None] | None:
@@ -81,24 +85,24 @@ class Store:
         return [dict(item_key=r[0], key=r[1], position=r[2], text=r[3]) for r in rows]
 
     # --- uid history
-    def remember_ids(self, layer: str, nodes: list[dict]) -> None:
+    def remember_ids(self, domain: str, nodes: list[dict]) -> None:
         now = time.time()
         self.db.executemany("INSERT OR REPLACE INTO node_ids VALUES (?,?,?,?)",
-                            [(n["uid"], n["id"], layer, now) for n in nodes if n.get("uid")])
+                            [(n["uid"], n["id"], domain, now) for n in nodes if n.get("uid")])
         self.db.commit()
 
     def uids_for(self, node_id: str) -> list[str]:
         return [r[0] for r in self.db.execute("SELECT uid FROM node_ids WHERE id=?", (node_id,))]
 
     # --- export / merge for sync (text records; the database itself is never shared)
-    def layer_of_file(self, key: str) -> str | None:
-        r = self.db.execute("SELECT layer FROM files WHERE path=?", (key,)).fetchone()
+    def domain_of_file(self, key: str) -> str | None:
+        r = self.db.execute("SELECT domain FROM files WHERE path=?", (key,)).fetchone()
         return r[0] if r else None
 
-    def dump_comments(self, layers_excluded: set[str]) -> list[dict]:
+    def dump_comments(self, domains_excluded: set[str]) -> list[dict]:
         out = []
         for (f,) in self.db.execute("SELECT DISTINCT file FROM comments ORDER BY file").fetchall():
-            if "/" in f or self.layer_of_file(f) in layers_excluded:   # keys with a path belong to a local graphs folder
+            if "/" in f or self.domain_of_file(f) in domains_excluded:   # keys with a path belong to a local graphs folder
                 continue
             out += [{"file": f, **c} for c in self.comments(f)]
         return out
@@ -120,14 +124,14 @@ class Store:
         self.db.commit()
         return added
 
-    def dump_node_ids(self, layers_excluded: set[str]) -> list[dict]:
-        rows = self.db.execute("SELECT uid, id, layer FROM node_ids ORDER BY layer, id, uid")
-        return [{"uid": u, "id": i, "layer": l} for u, i, l in rows if l not in layers_excluded]
+    def dump_node_ids(self, domains_excluded: set[str]) -> list[dict]:
+        rows = self.db.execute("SELECT uid, id, domain FROM node_ids ORDER BY domain, id, uid")
+        return [{"uid": u, "id": i, "domain": l} for u, i, l in rows if l not in domains_excluded]
 
     def merge_node_ids(self, records: list[dict]) -> int:
         before = self.db.execute("SELECT COUNT(*) FROM node_ids").fetchone()[0]
         self.db.executemany("INSERT OR IGNORE INTO node_ids VALUES (?,?,?,?)",
-                            [(r["uid"], r["id"], r["layer"], time.time()) for r in records])
+                            [(r["uid"], r["id"], r.get("domain", r.get("layer")), time.time()) for r in records])      # a record from 0.2.x says `layer`
         self.db.commit()
         return self.db.execute("SELECT COUNT(*) FROM node_ids").fetchone()[0] - before
 

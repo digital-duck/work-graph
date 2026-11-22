@@ -1,6 +1,6 @@
 {
-  "schema": "workgraph/1",
-  "layer": "org",
+  "schema": "workgraph/2",
+  "domain": "org",
   "nodes": [
     {
       "id": "org:acme",

@@ -1,22 +1,32 @@
-"""Layer file schema: vocabulary and validation for the product, org and process layers (JSON form)."""
+"""Domain file schema: vocabulary and validation for the product, org and process domains (JSON form)."""
 from __future__ import annotations
 
 import re
 
 import networkx as nx
 
-SCHEMA = "workgraph/1"
+SCHEMA = "workgraph/2"
+LEGACY_SCHEMA = "workgraph/1"      # 0.2.x: `layer:` was the key now called `domain:`
 
-LAYER_KINDS = {
+
+def normalize_legacy(doc) -> list[str]:
+    """Read a file written by 0.2.x (`schema: workgraph/1`, `layer: org`) as the new form, in place; the notes to show (empty for a new file)."""
+    if isinstance(doc, dict) and doc.get("schema") == LEGACY_SCHEMA and "layer" in doc and "domain" not in doc:
+        doc["domain"] = doc.pop("layer")
+        doc["schema"] = SCHEMA
+        return ["written by workgraph 0.2.x (`layer:`, schema workgraph/1): read as `domain:`; run `workgraph utils migrate` to rewrite it"]
+    return []
+
+DOMAIN_KINDS = {
     "product": {"family", "product", "application"},
     "org": {"company", "division", "department", "group", "team", "person"},
     "process": {"process", "step"},
 }
 
-# id prefix -> layer; anything else is a repo-graph node
-PREFIX_LAYER = {"org": "org", "product": "product", "process": "process", "stage": "process", "project": "repo"}
+# id prefix -> domain; anything else is a repo-graph node
+PREFIX_DOMAIN = {"org": "org", "product": "product", "process": "process", "stage": "process", "project": "repo"}
 
-# relation -> (source layers, target layers); None means "same layer as the other end"
+# relation -> (source domains, target domains); None means "same domain as the other end"
 RELATION_RULES = {
     "part_of": None,
     "precedes": ({"process"}, {"process"}),
@@ -25,8 +35,8 @@ RELATION_RULES = {
     "follows": ({"product"}, {"process"}),
 }
 
-# Relations the build itself adds across layers (every repo node is tagged with its stages). Not allowed
-# in layer files, but part of the layer graph, so the dependency between repo and process is visible.
+# Relations the build itself adds across domains (every repo node is tagged with its stages). Not allowed
+# in domain files, but part of the domain map, so the dependency between repo and process is visible.
 BUILD_RELATIONS = {
     "in_stage": ({"repo"}, {"process"}),
     "participates_in": ({"repo"}, {"process"}),
@@ -35,36 +45,36 @@ BUILD_RELATIONS = {
 UID_RE = re.compile(r"^[0-9a-f]{8}$")
 
 
-def layer_of(node_id: str) -> str:
+def domain_of(node_id: str) -> str:
     prefix = node_id.partition(":")[0]
-    return PREFIX_LAYER.get(prefix, "repo")
+    return PREFIX_DOMAIN.get(prefix, "repo")
 
 
 def check_relation(relation: str, source: str, target: str) -> str | None:
     """Error text if `relation` may not join these two IDs, else None."""
     if relation not in RELATION_RULES:
         return f"unknown relation {relation!r}; allowed: {sorted(RELATION_RULES)}"
-    ls, lt = layer_of(source), layer_of(target)
+    ls, lt = domain_of(source), domain_of(target)
     rule = RELATION_RULES[relation]
     if rule is None:
         if ls != lt or ls == "repo":
-            return f"`part_of` joins nodes of one layer (product, org or process), got {ls} -> {lt}"
+            return f"`part_of` joins nodes of one domain (product, org or process), got {ls} -> {lt}"
         return None
     if ls not in rule[0] or lt not in rule[1]:
         return f"`{relation}` must go {'/'.join(sorted(rule[0]))} -> {'/'.join(sorted(rule[1]))}, got {ls} -> {lt}"
     return None
 
 
-def validate_layer(doc: dict, name: str = "layer") -> list[str]:
-    """Structural validation of one layer file. References to other files are checked later, in refs."""
+def validate_domain(doc: dict, name: str = "domain") -> list[str]:
+    """Structural validation of one domain file. References to other files are checked later, in refs."""
     errs: list[str] = []
     if not isinstance(doc, dict):
         return [f"{name}: top level must be a mapping"]
     if doc.get("schema") != SCHEMA:
         errs.append(f"{name}: `schema` must be {SCHEMA!r}")
-    layer = doc.get("layer")
-    if layer not in LAYER_KINDS:
-        errs.append(f"{name}: `layer` must be one of {sorted(LAYER_KINDS)}, got {layer!r}")
+    domain = doc.get("domain")
+    if domain not in DOMAIN_KINDS:
+        errs.append(f"{name}: `domain` must be one of {sorted(DOMAIN_KINDS)}, got {domain!r}")
         return errs
     for key in ("nodes", "edges"):
         if not isinstance(doc.get(key), list):
@@ -80,13 +90,13 @@ def validate_layer(doc: dict, name: str = "layer") -> list[str]:
             continue
         nid = n["id"]
         where = f"{name}: node {nid}"
-        if layer_of(nid) != layer or ":" not in nid:
-            errs.append(f"{where}: id must start with `{layer}:`")
+        if domain_of(nid) != domain or ":" not in nid:
+            errs.append(f"{where}: id must start with `{domain}:`")
         if nid in ids:
             errs.append(f"{where}: duplicate id")
         ids.add(nid)
-        if n.get("kind") not in LAYER_KINDS[layer]:
-            errs.append(f"{where}: kind {n.get('kind')!r} not allowed in layer {layer} ({sorted(LAYER_KINDS[layer])})")
+        if n.get("kind") not in DOMAIN_KINDS[domain]:
+            errs.append(f"{where}: kind {n.get('kind')!r} not allowed in domain {domain} ({sorted(DOMAIN_KINDS[domain])})")
         uid = n.get("uid")
         if uid is not None:
             if not isinstance(uid, str) or not UID_RE.match(uid):

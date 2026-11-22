@@ -110,7 +110,7 @@ def context_summary(name: str) -> str:
         rel = lambda u, r: [v for _, v, d in M.out_edges(u, data=True) if d.get("relation") == r]  # noqa: E731
         label = lambda i: M.nodes[i].get("label", i)  # noqa: E731
         for prod in rel(pid, "belongs_to"):
-            if M.nodes[prod].get("layer") == "product":
+            if M.nodes[prod].get("domain") == "product":
                 owners = [label(o) for o in rel(prod, "owned_by")]
                 procs = [label(p) for p in rel(prod, "follows")]
                 lines.append(f"Product: {label(prod)}" + (f"; owner: {', '.join(owners)}" if owners else "")

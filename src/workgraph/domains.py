@@ -1,16 +1,16 @@
-"""The layer graph and per-layer partitions of a built graph.
+"""The domain map and per-domain partitions of a built graph.
 
-Two graphs. The *layer graph* is small: its nodes are layers (repo, product, org, process) and its
+Two graphs. The *domain map* is small: its nodes are domains (repo, product, org, process) and its
 edges are the dependencies between them (`repo` -belongs_to-> `product`). It is derived from the
 vocabulary in `schema.py`, so there is one source of truth. The *instance graph* is the knowledge
-graph; every node already carries a `layer` attribute naming a node of the layer graph.
+graph; every node already carries a `domain` attribute naming a node of the domain map.
 
-Coarseness is relative: a layer is coarser than the layers that point at it. `rank` counts that
-(finest layer 0) and is computed, never stored in a file, so adding a layer shifts the ranks.
+Coarseness is relative: a domain is coarser than the domains that point at it. `rank` counts that
+(finest domain 0) and is computed, never stored in a file, so adding a domain shifts the ranks.
 
-A build also writes the instance graph in partitions (`<out>/layers/`), so a view can load the layers
-it needs instead of the whole graph: `layers.json` (the layer graph with counts), `<layer>.json`
-(that layer's nodes and the edges inside it) and `cross.json` (edges between layers).
+A build also writes the instance graph in partitions (`<out>/domains/`), so a view can load the domains
+it needs instead of the whole graph: `domains.json` (the domain map with counts), `<domain>.json`
+(that domain's nodes and the edges inside it) and `cross.json` (edges between domains).
 """
 from __future__ import annotations
 
@@ -20,20 +20,20 @@ from pathlib import Path
 import networkx as nx
 
 from . import paths
-from .schema import BUILD_RELATIONS, LAYER_KINDS, RELATION_RULES, layer_of
+from .schema import BUILD_RELATIONS, DOMAIN_KINDS, RELATION_RULES, domain_of
 
-FORMAT = "workgraph-layers/1"
+FORMAT = "workgraph-domains/1"
 CROSS = "cross"
-META = "layers"
-FINEST = "repo"      # the layer of nodes built from projects; it has no layer file
+META = "domains"
+FINEST = "repo"      # the domain of nodes built from projects; it has no domain file
 
 
-def layer_graph() -> nx.DiGraph:
-    """Layers as nodes, dependencies as edges (each with the `relations` that realise it), with a computed
+def domain_map() -> nx.DiGraph:
+    """Domains as nodes, dependencies as edges (each with the `relations` that realise it), with a computed
     `rank` (0 = finest)."""
     G = nx.DiGraph()
-    for name in [FINEST, *sorted(LAYER_KINDS)]:
-        G.add_node(name, kinds=sorted(LAYER_KINDS.get(name, [])), hierarchical=name != FINEST)
+    for name in [FINEST, *sorted(DOMAIN_KINDS)]:
+        G.add_node(name, kinds=sorted(DOMAIN_KINDS.get(name, [])), hierarchical=name != FINEST)
     for relation, rule in [*RELATION_RULES.items(), *BUILD_RELATIONS.items()]:
         if rule is None:
             continue
@@ -45,21 +45,21 @@ def layer_graph() -> nx.DiGraph:
                     else:
                         G.add_edge(src, tgt, relations=[relation])
     if not nx.is_directed_acyclic_graph(G):
-        raise ValueError("layer dependencies contain a cycle; coarseness would be undefined")
+        raise ValueError("domain dependencies contain a cycle; coarseness would be undefined")
     for rank, generation in enumerate(nx.topological_generations(G)):
         for name in generation:
             G.nodes[name]["rank"] = rank
     return G
 
 
-def coarser(G: nx.DiGraph, layer: str) -> list[str]:
-    """Layers `layer` points at, i.e. the ones that contain or describe it."""
-    return sorted(G.successors(layer), key=lambda n: (G.nodes[n]["rank"], n))
+def coarser(G: nx.DiGraph, domain: str) -> list[str]:
+    """Domains `domain` points at, i.e. the ones that contain or describe it."""
+    return sorted(G.successors(domain), key=lambda n: (G.nodes[n]["rank"], n))
 
 
-def finer(G: nx.DiGraph, layer: str) -> list[str]:
-    """Layers that point at `layer`."""
-    return sorted(G.predecessors(layer), key=lambda n: (G.nodes[n]["rank"], n))
+def finer(G: nx.DiGraph, domain: str) -> list[str]:
+    """Domains that point at `domain`."""
+    return sorted(G.predecessors(domain), key=lambda n: (G.nodes[n]["rank"], n))
 
 
 def by_coarseness(G: nx.DiGraph) -> list[str]:
@@ -67,12 +67,12 @@ def by_coarseness(G: nx.DiGraph) -> list[str]:
     return sorted(G.nodes, key=lambda n: (-G.nodes[n]["rank"], n))
 
 
-def node_layer(M: nx.MultiDiGraph, node: str) -> str:
-    return M.nodes[node].get("layer") or layer_of(node)
+def node_domain(M: nx.MultiDiGraph, node: str) -> str:
+    return M.nodes[node].get("domain") or domain_of(node)
 
 
-def layers_dir(out: str | Path | None = None) -> Path:
-    return Path(out) if out else paths.out_dir() / "layers"
+def domains_dir(out: str | Path | None = None) -> Path:
+    return Path(out) if out else paths.out_dir() / "domains"
 
 
 # ---- writing -------------------------------------------------------------------------------------
@@ -82,20 +82,20 @@ def _dump(path: Path, obj) -> None:
 
 
 def write_partitions(M: nx.MultiDiGraph, out: str | Path | None = None) -> Path:
-    """Write the layer graph, one file per layer and the cross-layer edges. Replaces earlier output."""
-    d = layers_dir(out)
+    """Write the domain map, one file per domain and the cross-domain edges. Replaces earlier output."""
+    d = domains_dir(out)
     d.mkdir(parents=True, exist_ok=True)
     for old in d.glob("*.json"):
         old.unlink()
-    L = layer_graph()
+    L = domain_map()
     members: dict[str, list[str]] = {name: [] for name in L}
     for n in M.nodes:
-        members.setdefault(node_layer(M, n), []).append(n)
+        members.setdefault(node_domain(M, n), []).append(n)
     cross: list[dict] = []
     cross_count: dict[tuple[str, str, str], int] = {}
     inner_count = dict.fromkeys(members, 0)
     for u, v, data in M.edges(data=True):
-        lu, lv = node_layer(M, u), node_layer(M, v)
+        lu, lv = node_domain(M, u), node_domain(M, v)
         if lu == lv:
             inner_count[lu] += 1
         else:
@@ -107,7 +107,7 @@ def write_partitions(M: nx.MultiDiGraph, out: str | Path | None = None) -> Path:
     _dump(d / f"{CROSS}.json", {"edges": cross})
     meta = {
         "format": FORMAT,
-        "layers": [{"id": n, **{k: L.nodes[n][k] for k in ("rank", "hierarchical", "kinds")},
+        "domains": [{"id": n, **{k: L.nodes[n][k] for k in ("rank", "hierarchical", "kinds")},
                     "nodes": len(members.get(n, [])), "edges": inner_count.get(n, 0)} for n in by_coarseness(L)],
         "dependencies": [{"source": u, "target": v, "relation": r, "edges": cross_count.get((u, v, r), 0)}
                          for u, v, data in L.edges(data=True) for r in data["relations"]],
@@ -122,34 +122,34 @@ def write_partitions(M: nx.MultiDiGraph, out: str | Path | None = None) -> Path:
 # ---- reading -------------------------------------------------------------------------------------
 
 def available(out: str | Path | None = None) -> bool:
-    return (layers_dir(out) / f"{META}.json").is_file()
+    return (domains_dir(out) / f"{META}.json").is_file()
 
 
 def load_meta(out: str | Path | None = None) -> dict:
-    p = layers_dir(out) / f"{META}.json"
+    p = domains_dir(out) / f"{META}.json"
     if not p.is_file():
-        raise FileNotFoundError(f"no layer partitions at {p.parent}: run `workgraph build` first")
+        raise FileNotFoundError(f"no domain partitions at {p.parent}: run `workgraph build` first")
     return json.loads(p.read_text(encoding="utf-8"))
 
 
-def load_layer(name: str, out: str | Path | None = None) -> nx.MultiDiGraph:
-    """One layer on its own: its nodes and the edges inside it."""
-    p = layers_dir(out) / f"{name}.json"
+def load_domain(name: str, out: str | Path | None = None) -> nx.MultiDiGraph:
+    """One domain on its own: its nodes and the edges inside it."""
+    p = domains_dir(out) / f"{name}.json"
     if not p.is_file():
-        raise FileNotFoundError(f"no partition for layer {name!r} at {p}")
+        raise FileNotFoundError(f"no partition for domain {name!r} at {p}")
     return nx.node_link_graph(json.loads(p.read_text(encoding="utf-8")), edges="edges")
 
 
 def load_cross(out: str | Path | None = None) -> list[dict]:
-    p = layers_dir(out) / f"{CROSS}.json"
+    p = domains_dir(out) / f"{CROSS}.json"
     return json.loads(p.read_text(encoding="utf-8"))["edges"] if p.is_file() else []
 
 
 def load_scope(names: list[str], out: str | Path | None = None) -> nx.MultiDiGraph:
-    """The named layers together: their partitions plus the cross edges that stay inside the scope."""
+    """The named domains together: their partitions plus the cross edges that stay inside the scope."""
     G = nx.MultiDiGraph()
     for name in names:
-        G.update(load_layer(name, out))
+        G.update(load_domain(name, out))
     for e in load_cross(out):
         if e["source"] in G and e["target"] in G:
             G.add_edge(e["source"], e["target"], **{k: v for k, v in e.items() if k not in ("source", "target")})
@@ -157,51 +157,51 @@ def load_scope(names: list[str], out: str | Path | None = None) -> nx.MultiDiGra
 
 
 def context(node: str, out: str | Path | None = None) -> dict:
-    """A node with its neighbours, loading only the partitions it needs: its own layer, and the layers
-    its cross-layer neighbours live in. Neighbours are grouped by the neighbour's layer relative to the
-    node's: `coarser` (higher rank), `finer` (lower), `same` (same layer), `beside` (other layer, equal rank)."""
-    L = layer_graph()
-    layer = layer_of(node)
-    G = load_layer(layer, out)
+    """A node with its neighbours, loading only the partitions it needs: its own domain, and the domains
+    its cross-domain neighbours live in. Neighbours are grouped by the neighbour's domain relative to the
+    node's: `coarser` (higher rank), `finer` (lower), `same` (same domain), `beside` (other domain, equal rank)."""
+    L = domain_map()
+    domain = domain_of(node)
+    G = load_domain(domain, out)
     if node not in G:
-        raise KeyError(f"{node!r} is not in layer {layer!r}")
-    links: list[tuple[str, str, str, str]] = []            # (direction, relation, other id, other layer)
+        raise KeyError(f"{node!r} is not in domain {domain!r}")
+    links: list[tuple[str, str, str, str]] = []            # (direction, relation, other id, other domain)
     for u, v, data in G.out_edges(node, data=True):
-        links.append(("out", data.get("relation", ""), v, layer))
+        links.append(("out", data.get("relation", ""), v, domain))
     for u, v, data in G.in_edges(node, data=True):
-        links.append(("in", data.get("relation", ""), u, layer))
+        links.append(("in", data.get("relation", ""), u, domain))
     for e in load_cross(out):
         if e["source"] == node:
-            links.append(("out", e.get("relation", ""), e["target"], layer_of(e["target"])))
+            links.append(("out", e.get("relation", ""), e["target"], domain_of(e["target"])))
         elif e["target"] == node:
-            links.append(("in", e.get("relation", ""), e["source"], layer_of(e["source"])))
-    cache: dict[str, nx.MultiDiGraph] = {layer: G}
-    rank = L.nodes[layer]["rank"] if layer in L else 0
+            links.append(("in", e.get("relation", ""), e["source"], domain_of(e["source"])))
+    cache: dict[str, nx.MultiDiGraph] = {domain: G}
+    rank = L.nodes[domain]["rank"] if domain in L else 0
     out_groups: dict[str, list[dict]] = {"coarser": [], "finer": [], "same": [], "beside": []}
-    for direction, relation, other, other_layer in links:
-        if other_layer not in cache:
-            cache[other_layer] = load_layer(other_layer, out)
-        attrs = cache[other_layer].nodes[other] if other in cache[other_layer] else {}
-        r = L.nodes[other_layer]["rank"] if other_layer in L else rank
-        group = "same" if other_layer == layer else "coarser" if r > rank else "finer" if r < rank else "beside"
+    for direction, relation, other, other_domain in links:
+        if other_domain not in cache:
+            cache[other_domain] = load_domain(other_domain, out)
+        attrs = cache[other_domain].nodes[other] if other in cache[other_domain] else {}
+        r = L.nodes[other_domain]["rank"] if other_domain in L else rank
+        group = "same" if other_domain == domain else "coarser" if r > rank else "finer" if r < rank else "beside"
         out_groups[group].append({"direction": direction, "relation": relation, "id": other,
                                   "label": attrs.get("label", other), "kind": attrs.get("kind", ""),
-                                  "layer": other_layer})
-    return {"id": node, "layer": layer, "attrs": dict(G.nodes[node]), "loaded": sorted(cache), **out_groups}
+                                  "domain": other_domain})
+    return {"id": node, "domain": domain, "attrs": dict(G.nodes[node]), "loaded": sorted(cache), **out_groups}
 
 
-def below(node: str, child_layer: str, out: str | Path | None = None) -> nx.MultiDiGraph:
-    """The child graph of a node: what `child_layer` holds under it, with the relations among those nodes.
+def below(node: str, child_domain: str, out: str | Path | None = None) -> nx.MultiDiGraph:
+    """The child graph of a node: what `child_domain` holds under it, with the relations among those nodes.
 
-    Starts from the child-layer nodes linked to `node` or to anything inside it (its `part_of` descendants
-    in its own layer), then adds what those contain: their own `part_of` descendants, and for a project
+    Starts from the child-domain nodes linked to `node` or to anything inside it (its `part_of` descendants
+    in its own domain), then adds what those contain: their own `part_of` descendants, and for a project
     node every node of that project (files, documents, requirements, symbols). Loads two partitions,
-    the node's layer and `child_layer`. Seeds (the directly linked nodes) carry `seed=True`.
-    Only adjacent layers are linked; a layer two steps down gives an empty graph."""
-    P = load_layer(layer_of(node), out)
+    the node's domain and `child_domain`. Seeds (the directly linked nodes) carry `seed=True`.
+    Only adjacent domains are linked; a domain two steps down gives an empty graph."""
+    P = load_domain(domain_of(node), out)
     if node not in P:
-        raise KeyError(f"{node!r} is not in layer {layer_of(node)!r}")
-    C = load_layer(child_layer, out)
+        raise KeyError(f"{node!r} is not in domain {domain_of(node)!r}")
+    C = load_domain(child_domain, out)
     scope = {node} | _inside(P, node)
     seeds: set[str] = set()
     for e in load_cross(out):
@@ -223,14 +223,14 @@ def below(node: str, child_layer: str, out: str | Path | None = None) -> nx.Mult
 
 
 def _inside(G: nx.MultiDiGraph, node: str) -> set[str]:
-    """Everything below `node` in its layer: `part_of` runs child -> parent, so those are its ancestors in the edge graph."""
+    """Everything below `node` in its domain: `part_of` runs child -> parent, so those are its ancestors in the edge graph."""
     parents = nx.DiGraph((u, v) for u, v, d in G.edges(data=True) if d.get("relation") == "part_of")
     return set(nx.ancestors(parents, node)) if node in parents else set()
 
 
 def hierarchy(G: nx.MultiDiGraph, limit: int = 500) -> list[tuple[int, str]]:
-    """(depth, id) rows of a hierarchical layer, parents before their children, following `part_of`
-    (child -> parent). Nodes with no parent in the layer are the roots. Cut off after `limit` rows."""
+    """(depth, id) rows of a hierarchical domain, parents before their children, following `part_of`
+    (child -> parent). Nodes with no parent in the domain are the roots. Cut off after `limit` rows."""
     children: dict[str, list[str]] = {}
     has_parent: set[str] = set()
     for u, v, data in G.edges(data=True):
@@ -251,10 +251,10 @@ def hierarchy(G: nx.MultiDiGraph, limit: int = 500) -> list[tuple[int, str]]:
 
 
 def to_dot(G: nx.DiGraph, meta: dict | None = None) -> str:
-    """The layer graph as Graphviz source, coarsest layers at the top; with `meta` the counts are shown."""
-    counts = {x["id"]: x for x in meta["layers"]} if meta else {}
+    """The domain map as Graphviz source, coarsest domains at the top; with `meta` the counts are shown."""
+    counts = {x["id"]: x for x in meta["domains"]} if meta else {}
     deps = {(x["source"], x["target"], x["relation"]): x["edges"] for x in meta["dependencies"]} if meta else {}
-    lines = ["digraph layers {", "  rankdir=BT; node [shape=box, style=rounded, fontsize=12]; edge [fontsize=10];"]
+    lines = ["digraph domains {", "  rankdir=BT; node [shape=box, style=rounded, fontsize=12]; edge [fontsize=10];"]
     ranks: dict[int, list[str]] = {}
     for n, d in G.nodes(data=True):
         ranks.setdefault(d["rank"], []).append(n)

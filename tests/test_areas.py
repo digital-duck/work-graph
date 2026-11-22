@@ -145,3 +145,6 @@ def test_a_graph_built_before_the_rename_is_refused_with_a_rebuild_message():
         raise AssertionError("an unmarked graph with the old keys must be refused")
     old.graph["workgraph_format"] = 2
     assert query.check_format(old) is old
+    new = nx.MultiDiGraph()
+    new.add_node("a", area="sdlc", domain="process")           # new words, hand-built, no mark: fine
+    assert query.check_format(new) is new

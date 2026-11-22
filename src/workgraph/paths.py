@@ -2,7 +2,7 @@
 
     workspace.yaml   the default workspace: the projects workgraph knows about
     custom/          everything you author yourself
-      graphs/        layer files (org, product, process; JSON + YAML)
+      graphs/        domain files (org, product, process; JSON + YAML)
     workgraph.sqlite3  comments, uid history, Claude Code session journal. Lives here, never inside custom/ or sync/
     sync/            the git working tree for `workgraph sync` (exported text only, no database)
     out/             the built graph.json
@@ -36,7 +36,7 @@ def graphs_dir() -> Path:
 
 
 def legacy_graphs_dir() -> Path:
-    """Where layer files lived before the `custom/` folder existed."""
+    """Where domain files lived before the `custom/` folder existed."""
     return home() / "graphs"
 
 

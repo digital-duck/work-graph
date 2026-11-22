@@ -277,7 +277,7 @@ class Project:
 @dataclass
 class Workspace:
     projects: list[Project]
-    graphs_dir: Path | None = None   # layer files (product, org, process), see docs/DEV/README-design.md
+    graphs_dir: Path | None = None   # domain files (product, org, process), see docs/DEV/README-design.md
     unresolved: list[str] = field(default_factory=list)   # projects with no folder on this machine (synced, not yet cloned/tracked)
 
     @property
@@ -307,7 +307,7 @@ class Workspace:
         from . import paths
         if raw.get("graphs"):
             graphs = path.parent / raw["graphs"]
-        elif path.parent.resolve() == paths.home().resolve():     # the default workspace: layer files live in custom/
+        elif path.parent.resolve() == paths.home().resolve():     # the default workspace: domain files live in custom/
             graphs = paths.graphs_dir()
         else:
             graphs = path.parent / "graphs"

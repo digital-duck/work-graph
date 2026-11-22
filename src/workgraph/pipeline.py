@@ -14,7 +14,7 @@ from . import paths
 from .links import cross_project_links
 from .processors import run_processors
 from .progress import NullProgress, set_current
-from .refs import merge_layers
+from .refs import merge_domains
 from .store import Store
 
 STRUCTURAL_RELATIONS = {"imports", "imports_from", "calls", "uses", "references"}
@@ -174,8 +174,8 @@ def _build_workspace(ws: Workspace, semantic: bool, prog) -> tuple[nx.MultiDiGra
         derive_flow_edges(M, ws)
         M.graph["clones"] = cross_project_links(M, ws)
     store = Store(paths.store_path()) if ws.graphs_dir and paths.store_path().exists() else None
-    with prog.phase("merging layer files", "layers"):
-        warnings += merge_layers(M, ws, store)
+    with prog.phase("merging domain files", "domains"):
+        warnings += merge_domains(M, ws, store)
     if store:
         store.close()
     from .migrate import FORMAT

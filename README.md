@@ -26,7 +26,7 @@ That knowledge is scattered across repos, docs, tickets, notes, machines, and yo
 3. **Personal first.** It runs locally, is owned by you, and is plain-file persistent. It is a second brain for how you build.
 4. **Graph-grounded answers.** The LLM retrieves a *subgraph* (a node plus its neighborhood and the paths between nodes) as context, not just top-k text chunks. Answers can cite the nodes they used.
 5. **Beyond coding.** The same engine handles knowledge management: reading notes, research, meeting outcomes, and personal retrospectives.
-6. **Many graphs, one runtime.** The repo graph is the first of several layered graphs (below). They reference each other instead of copying nodes.
+6. **Many graphs, one runtime.** The repo graph is the first of several domain graphs (below). They reference each other instead of copying nodes.
 7. **Two formats, one model.** JSON is the canonical machine format, and YAML is the human format for review and audit.
 8. **Graph artifacts drive AI workflow.** The graph files are the working memory of the AI-assisted process, not a report generated at the end (below).
 
@@ -51,7 +51,7 @@ Two Claude Code hooks (installed by the `workgraph` plugin or `workgraph utils c
 
 ### Several machines
 
-The database never leaves the machine. What cannot be rebuilt (layer files, YAML comments, the portable workspace) travels as text: `workgraph dump` / `load` for a first setup by USB, then `workgraph sync push` / `pull` through a **private** GitHub repository. Exports and pushes are scanned and stop on databases, large files or anything shaped like a key; the org layer, session journal and LLM cache are opt-in. See the User Guide, "Moving to another machine".
+The database never leaves the machine. What cannot be rebuilt (domain files, YAML comments, the portable workspace) travels as text: `workgraph dump` / `load` for a first setup by USB, then `workgraph sync push` / `pull` through a **private** GitHub repository. Exports and pushes are scanned and stop on databases, large files or anything shaped like a key; the org domain, session journal and LLM cache are opt-in. See the User Guide, "Moving to another machine".
 
 `workgraph utils claude-setup --write` installs the hooks and the `/workgraph` command into your user-level Claude Code settings. The same pieces also exist as a Claude Code plugin in `plugin/`, which is **not published to a marketplace yet** while it is being tested; to try it from a clone, run `claude --plugin-dir <path>/plugin`. Use one route or the other, not both.
 
@@ -76,7 +76,7 @@ Today's graph covers repositories. The vision is a set of graphs, each with its 
 References exist for brevity in the spec. At run time they are always resolved in memory:
 
 1. **Spec time.** A graph file refers to a node or a whole sub-graph in another graph by a namespaced ID (`org:acme/payments`, `process:sdlc`) instead of repeating it.
-2. **Load time.** The loader resolves every reference and expands sub-graph references, merging all layers into **one in-memory graph**. Each node keeps a `layer` attribute, so queries, clustering and gap analysis work across layers without special cases.
+2. **Load time.** The loader resolves every reference and expands sub-graph references, merging all domains into **one in-memory graph**. Each node keeps a `domain` attribute, so queries, clustering and gap analysis work across domains without special cases.
 3. **Integrity.** An unresolvable reference (renamed, moved or deleted target) is reported as a broken reference, like the broken-reference check that already exists for requirements. Stable IDs matter here, because path-style IDs break when a team is reorganized.
 
 ### Dual formats: JSON and YAML
@@ -92,7 +92,7 @@ Converters go both ways (JSON <-> YAML). The conversion must be lossless for gra
 
 **Comment store.** YAML comments have no JSON equivalent, so a plain YAML-to-JSON conversion would lose them. A small database (SQLite) tracks every graph file and keeps its comments:
 
-- **Registry.** One row per `.json`/`.yaml` graph file, with its path, layer and content hash, so the tool knows which pairs belong together and when one side has changed.
+- **Registry.** One row per `.json`/`.yaml` graph file, with its path, domain and content hash, so the tool knows which pairs belong together and when one side has changed.
 - **Comments.** When YAML is converted to JSON, each comment is saved with an anchor (file, node ID, key path, and whether it is a leading, trailing or block comment) instead of a line number, so it survives reordering and reformatting.
 - **Restore.** When JSON is converted back to YAML, the saved comments are re-attached by anchor, so the original comments return even though the JSON never held them.
 - **Orphans.** If the node a comment was anchored to has been deleted or renamed, the comment is kept and reported as orphaned instead of being silently dropped.
@@ -103,9 +103,9 @@ Converters go both ways (JSON <-> YAML). The conversion must be lossless for gra
 
 The engine is [graphify](https://github.com/Graphify-Labs/graphify), used as a library from PyPI. It supplies file detection, tree-sitter extraction for about 25 languages, LLM semantic extraction with pluggable backends, entity dedup, Leiden clustering, graph queries and export. The graph is a NetworkX graph throughout.
 
-`workgraph` is a thin layer that adapts it to a **area** by supplying a *area pack*, a YAML file with two halves:
+`workgraph` is a thin layer that adapts it to an **area** by supplying an *area pack*, a YAML file with two halves:
 
-| Layer | What the pack defines | Example (`sdlc`) |
+| Domain | What the pack defines | Example (`sdlc`) |
 |---|---|---|
 | **Vocabulary** | stages (a constrained tag set) and their flow, legal relations, gap rules, path classifiers | requirement → design → build → test → release → operate; `test --verifies--> requirement` |
 | **Processing** | which artifact types go through which processor and LLM backend | `*.py` → tree-sitter; `*.md` → frontmatter; `*.pdf` → LLM (`claude-cli`) |
@@ -146,10 +146,10 @@ Seed nodes by keyword and embedding, expand through the graph, rank and prune, t
 
 ```
  sources ──▶┌──────────────┐
- (per layer)│  Ingestors   │  code · git · markdown · notes · web
+ (per domain)│  Ingestors   │  code · git · markdown · notes · web
             └──────┬───────┘
                    ▼
-   layer graph files (one per layer: repo · product · org · process)
+   domain files (one per domain: repo · product · org · process)
    ┌─────────────┐   convert    ┌─────────────┐
    │ JSON        │◀────────────▶│ YAML        │  human review and audit,
    │ canonical   │  (lossless)  │ with        │  comments added here
@@ -162,12 +162,12 @@ Seed nodes by keyword and embedding, expand through the graph, rank and prune, t
           ▼
    ┌──────────────┐
    │ Loader       │  resolves graph and sub-graph references, checks
-   │              │  referential integrity, merges layers
+   │              │  referential integrity, merges domains
    └──────┬───────┘
           ▼
             ┌──────────────┐
             │ Knowledge    │  one in-memory graph, every node tagged
-            │ Graph        │  with its layer
+            │ Graph        │  with its domain
             │ (NetworkX)   │
             └──────┬───────┘
                    ▼
@@ -204,7 +204,7 @@ workgraph build -c examples/workspace.yaml            # build the graph, write ~
 workgraph gaps --src https://github.com/digital-duck/work-graph   # any local folder or git URL, no workspace file
 workgraph gaps  -c examples/workspace.yaml            # report gaps per area rules
 workgraph utils clones -c examples/workspace.yaml           # files shared across projects
-workgraph utils check -c examples/workspace.yaml            # validate the org/product layer files and cross-graph references
+workgraph utils check -c examples/workspace.yaml            # validate the org/product domain files and cross-graph references
 workgraph utils convert examples/graphs/product.json        # JSON <-> YAML, YAML comments kept in the store
 workgraph open --semantic --adapter cc_cli -c examples/acme-shop/workspace.yaml   # open work items via the LLM pass
 python -m pytest
@@ -246,7 +246,7 @@ src/workgraph/
   area.py        # Area / Workspace loading, stage-tag validation, path classifiers
   llm.py           # LLM adapter: backend resolution + billing labels (cc_cli at home, bedrock at work)
   cc_cli.py        # subscription-only Claude Code backend (ported from SPL.py)
-  processors.py    # processing layer: ast, frontmatter, annotations, llm, llm_items
+  processors.py    # processing domain: ast, frontmatter, annotations, llm, llm_items
   links.py         # cross-project identical_to / variant_of edges
   pipeline.py      # tag + link + derive flow edges + cluster (wraps graphify)
   analyze.py       # gap analysis from a pack's expectations
@@ -258,8 +258,8 @@ Multi-graph modules (design in [docs/DEV/README-design.md](https://github.com/di
 
 ```
 src/workgraph/
-  schema.py        # layers, kinds, relation rules, validation of layer files
-  refs.py          # load layer files, expand /** sub-graph references, merge into the build graph
+  schema.py        # domains, kinds, relation rules, validation of domain files
+  refs.py          # load domain files, expand /** sub-graph references, merge into the build graph
   convert.py       # JSON <-> YAML converters; harvests and re-attaches YAML comments
   store.py         # SQLite: graph-file registry, comment store, uid history, Claude Code session journal
   paths.py         # the home folder (~/workgraph or $WORKGRAPH_HOME) and its layout
@@ -272,7 +272,7 @@ src/workgraph/
   ui/streamlit/    # Streamlit app (`workgraph ui`); one folder per UI framework under ui/
   data/            # packaged copy of the /workgraph command
 plugin/            # Claude Code plugin: hooks + the /workgraph command (not published; draft marketplace file in docs/DEV/)
-examples/graphs/   # org and product layer files (JSON canonical, YAML for review)
+examples/graphs/   # org and product domain files (JSON canonical, YAML for review)
 ```
 
 ## Hackathon scope
@@ -287,20 +287,20 @@ examples/graphs/   # org and product layer files (JSON canonical, YAML for revie
 - [x] Streamlit app to review and query the graph (`workgraph ui`): overview, keyword and semantic search, browse, gaps, a node's links and neighbourhood
 - [ ] Interactive visualization of the whole graph
 - [x] Graph references: namespaced IDs, resolved in memory at load time, with broken-reference reporting across graphs
-- [x] Product layer (thin): a repo `belongs_to` a product, and a product `follows` a process template
+- [x] Product domain (thin): a repo `belongs_to` a product, and a product `follows` a process template
 
 **Should have**
 - [x] Dual formats: JSON (canonical, schema and referential-integrity validation) and YAML (review and audit), with converters both ways
 - [x] Comment store: SQLite registry of graph files that saves YAML comments by anchor and restores them on JSON -> YAML
 - [x] Sub-graph addressing (a node plus its descendants) for querying and export
-- [x] Process layer: reusable process templates (such as stakeholder interview through feedback), separate from per-product instances
+- [x] Process domain: reusable process templates (such as stakeholder interview through feedback), separate from per-product instances
 - [ ] Git history ingestion (commits ↔ files ↔ issues)
 - [ ] LLM-proposed edges with accept/reject review
 - [ ] Traceability and coverage-gap reports (requirement → code → test)
 - [ ] Impact analysis ("what depends on this?")
 
 **Stretch**
-- [x] Org layer (company > division > department > group > team > person), kept optional and separable because of privacy
+- [x] Org domain (company > division > department > group > team > person), kept optional and separable because of privacy
 - [ ] Watch mode: incrementally update the graph as files change
 - [x] Claude Code integration: hooks (session memory), the `/workgraph` command and a plugin
 - [ ] MCP server so assistants can call search and show as tools

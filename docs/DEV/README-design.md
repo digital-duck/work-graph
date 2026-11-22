@@ -1,6 +1,6 @@
-# Design: layered graphs, references, dual formats
+# Design: domain graphs, references, dual formats
 
-Design for the multi-graph prototype described in the Vision section of the [README](../../README.md). It extends the existing repo and process layers with product and org layers, graph references, JSON/YAML dual storage and a comment store. The wider context is in `zinets/README-graph-vision.md`.
+Design for the multi-graph prototype described in the Vision section of the [README](../../README.md). It extends the existing repo and process domains with product and org domains, graph references, JSON/YAML dual storage and a comment store. The wider context is in `zinets/README-graph-vision.md`.
 
 This document was first written before the build. Where the build differs, the code wins and this file should be updated.
 
@@ -16,16 +16,16 @@ Legend: **built** = implemented and covered by tests or a live run; **partial** 
 | Core | Reload of a built graph for queries (`graph.json`) | built | `query.load_graph`; rebuilding the build pipeline from a saved graph is not needed |
 | LLM | `cc_cli` backend (Claude Code subscription, API variables stripped); `llm_items` extraction with caching | built | unit tests; live run: 4 documents, 26 items, about 5 minutes |
 | LLM | Other backends (`bedrock`, `claude`, `gemini`, ...) through graphify | partial | wiring and readiness checks only; not exercised here |
-| Layers | Layer files: schema, validation, referential integrity (`check`) | built | tests |
-| Layers | Product, org and process layers; cross-layer relations; pack-derived `process:<area>` templates | built | tests; examples in `examples/graphs/` |
-| Layers | Sub-graph references (`/**`) | built | test |
-| Layers | Layer graph: layers are nodes, layer dependencies are edges, coarseness is relative (section 15) | built | `layers.py`; tests; `workgraph utils layers` |
-| Layers | Per-layer partitions in `out/layers/` and scoped loading, so a view loads only the layers it needs | built | tests check that partitions add up to `graph.json` and that a view loads only the partitions it needs. Search and the older tabs still load the whole `graph.json` |
-| UI | Layers tab: parent canvas and child canvas (pick a node above, see what the finer layer holds under it below) | built | headless app tests; **not looked at in a browser** |
+| Domains | Domain files: schema, validation, referential integrity (`check`) | built | tests |
+| Domains | Product, org and process domains; cross-domain relations; pack-derived `process:<area>` templates | built | tests; examples in `examples/graphs/` |
+| Domains | Sub-graph references (`/**`) | built | test |
+| Domains | Domain map: domains are nodes, domain dependencies are edges, coarseness is relative (section 15) | built | `domains.py`; tests; `workgraph utils domains` |
+| Domains | Per-domain partitions in `out/domains/` and scoped loading, so a view loads only the domains it needs | built | tests check that partitions add up to `graph.json` and that a view loads only the partitions it needs. Search and the older tabs still load the whole `graph.json` |
+| UI | Domains tab: parent canvas and child canvas (pick a node above, see what the finer domain holds under it below) | built | headless app tests; **not looked at in a browser** |
 | Packs | `utils validate-pack` lists every problem in an area pack | built | tests; all shipped packs pass |
-| Layers | `uid` rename hints; `check --assign-uids` | built | test; hints depend on the store having seen the old id |
-| Layers | Process instances (a product's status within a process template) | not built | only templates and the `follows` link exist |
-| Layers | Per-layer vocabulary as YAML packs | not built | kinds and relations are Python constants in `schema.py` |
+| Domains | `uid` rename hints; `check --assign-uids` | built | test; hints depend on the store having seen the old id |
+| Domains | Process instances (a product's status within a process template) | not built | only templates and the `follows` link exist |
+| Domains | Per-domain vocabulary as YAML packs | not built | kinds and relations are Python constants in `schema.py` |
 | Formats | JSON <-> YAML converters (`convert`) | built | round-trip test |
 | Formats | Comment store: anchored comments restored on JSON -> YAML; orphans kept | built | tests; comments inside hand-written flow-style items attach to the whole item; renaming a node id orphans its comments |
 | Home | Home folder `~/workgraph` (`WORKGRAPH_HOME`), `init`, `track`, default workspace; `custom/` for user-authored files (`custom/graphs/`), with an explanatory README and automatic move of the old `graphs/` | built | tests |
@@ -44,7 +44,7 @@ Legend: **built** = implemented and covered by tests or a live run; **partial** 
 | Claude Code | Memory files as `memory` nodes (processor `claude_memory`) | built | test; live: a project's 9 memory files found by `search` |
 | Claude Code | `import-claude`: track the projects Claude Code worked in; session metadata (and optional titles) into the journal | built | tests; live on this machine in a scratch home: 42 folders, 65 sessions. Dry run by default; message text is never stored |
 | Privacy | Database renamed `workgraph.sqlite3` and kept at the top of the home folder, away from every synced or committed folder; `*.sqlite*`/`*.db` git-ignored | built | tests; old `graphs/store.sqlite` moves over automatically |
-| Privacy | Guards on export and push: database files, files over 5 MB and secret patterns stop the operation; org layer, sessions and LLM cache are opt-in | built | tests |
+| Privacy | Guards on export and push: database files, files over 5 MB and secret patterns stop the operation; org domain, sessions and LLM cache are opt-in | built | tests |
 | Sync | `dump` / `load` tar.gz (USB, first setup) with safe extraction | built | tests; live between two scratch homes |
 | Sync | `sync init/push/pull/status` through a private git repository, 3-way file merge that never overwrites local work, JSONL for comments, uid history and sessions | built | tests with a local bare repo; live between two scratch homes. Not run against GitHub: the privacy check through `gh` is untested |
 | Sync | Portable `workspace.yaml` (repo URLs, no local folders); `track` binds a folder; `sync pull --clone-missing` | built | tests |
@@ -60,29 +60,29 @@ Legend: **built** = implemented and covered by tests or a live run; **partial** 
 
 Goals:
 
-1. Several graphs (layers) that reference each other instead of copying nodes.
+1. Several graphs (domains) that reference each other instead of copying nodes.
 2. References written briefly in the spec, always resolved in memory at run time.
 3. JSON as the canonical machine format with validation and referential integrity. YAML as the human format for review and audit, with comments that are never lost.
 4. Lossless conversion in both directions.
 
-Non-goals for the prototype: a multi-user store, access control for the org layer, federation across separate stores, editing graphs through the LLM, and replacing the repo layer's graphify-derived IDs.
+Non-goals for the prototype: a multi-user store, access control for the org domain, federation across separate stores, editing graphs through the LLM, and replacing the repo domain's graphify-derived IDs.
 
-## 2. Layers
+## 2. Domains
 
-| Layer | Node kinds | Hierarchy (`part_of`, child to parent) | Source |
+| Domain | Node kinds | Hierarchy (`part_of`, child to parent) | Source |
 |---|---|---|---|
 | `repo` | project, file, symbol, document, requirement, ... | built today by the pipeline | scanned from projects |
-| `product` | `family`, `product`, `application` | family > product > application | layer file |
-| `org` | `company`, `division`, `department`, `group`, `team`, `person` | company > ... > person | layer file |
-| `process` | `process`, `step` | process > step, with `precedes` between steps | layer file, plus every area pack |
+| `product` | `family`, `product`, `application` | family > product > application | domain file |
+| `org` | `company`, `division`, `department`, `group`, `team`, `person` | company > ... > person | domain file |
+| `process` | `process`, `step` | process > step, with `precedes` between steps | domain file, plus every area pack |
 
-Area packs are process templates. For each pack in the workspace the loader adds a node `process:<area>` and a `part_of` edge from each of its `stage:<area>:<id>` nodes, so `follows: process:sdlc` resolves without any layer file. A process that is not a pack (for example stakeholder interview through feedback) can be written as a `process` layer file with `step` nodes and `precedes` edges.
+Area packs are process templates. For each pack in the workspace the loader adds a node `process:<area>` and a `part_of` edge from each of its `stage:<area>:<id>` nodes, so `follows: process:sdlc` resolves without any domain file. A process that is not a pack (for example stakeholder interview through feedback) can be written as a `process` domain file with `step` nodes and `precedes` edges.
 
-Cross-layer relations:
+Cross-domain relations:
 
 | Relation | From | To | Meaning |
 |---|---|---|---|
-| `part_of` | any | same layer | containment, child to parent |
+| `part_of` | any | same domain | containment, child to parent |
 | `precedes` | process step | process step | ordering inside a process |
 | `belongs_to` | repo project | product (any level) | the project builds that product |
 | `owned_by` | product | org | which team or unit owns it |
@@ -92,22 +92,22 @@ Template versus instance: a process node is the template. A product's progress t
 
 ## 3. Node IDs
 
-Decision: **readable path-style IDs**, `<layer>:<path>`, for example `org:acme/engineering/payments`, `product:acme/shop/checkout`, `process:sdlc`. References always use these IDs. There is no `aliases` field.
+Decision: **readable path-style IDs**, `<domain>:<path>`, for example `org:acme/engineering/payments`, `product:acme/shop/checkout`, `process:sdlc`. References always use these IDs. There is no `aliases` field.
 
-Renames are the weak point of path-style IDs, so each layer node also carries a short **`uid`** (8 hex characters, generated once, never edited and never used in references). It exists only so the tools can tell a rename from a deletion:
+Renames are the weak point of path-style IDs, so each domain node also carries a short **`uid`** (8 hex characters, generated once, never edited and never used in references). It exists only so the tools can tell a rename from a deletion:
 
 - The store remembers every `(uid, id)` pair it has seen.
 - When a reference fails to resolve, the checker looks up the missing ID in that history. If the same `uid` now exists under a different ID, the error says `renamed to <new id>` and names the references to update. Otherwise it is reported as a plain broken reference.
 
 So the ID stays readable and reviewable, and the uid turns "broken reference" into "renamed, here is the fix". The checker only reports renames. It never rewrites references on its own.
 
-Repo-layer IDs are unchanged (graphify-derived, prefixed with the project name). The repo layer is addressable from other layers as `project:<name>`, which is already the project node ID.
+Repo-domain IDs are unchanged (graphify-derived, prefixed with the project name). The repo domain is addressable from other domains as `project:<name>`, which is already the project node ID.
 
-An ID's prefix names its layer: `org:`, `product:`, `process:`, and `stage:` and `project:` for the process and repo nodes that already exist. Any other prefix is treated as a repo node.
+An ID's prefix names its domain: `org:`, `product:`, `process:`, and `stage:` and `project:` for the process and repo nodes that already exist. Any other prefix is treated as a repo node.
 
-## 4. Layer files
+## 4. Domain files
 
-One file per layer, kept together in a single directory: `<home>/custom/graphs/` for the default workspace, or a `graphs/` folder next to a workspace file (the `graphs:` key overrides). The `custom/` folder is the place for everything the user authors, and has room for future things such as user-written area packs:
+One file per domain, kept together in a single directory: `<home>/custom/graphs/` for the default workspace, or a `graphs/` folder next to a workspace file (the `graphs:` key overrides). The `custom/` folder is the place for everything the user authors, and has room for future things such as user-written area packs:
 
 ```
 examples/graphs/
@@ -119,8 +119,8 @@ JSON form (canonical):
 
 ```json
 {
-  "schema": "workgraph/1",
-  "layer": "product",
+  "schema": "workgraph/2",
+  "domain": "product",
   "nodes": [
     {"id": "product:acme/shop", "uid": "3fa9c2d1", "kind": "product", "label": "Shop"}
   ],
@@ -136,9 +136,9 @@ The YAML form has the same content and key names. Edges default to `confidence: 
 
 Applied to the JSON form, always before merging:
 
-- top level has `schema`, `layer`, `nodes`, `edges`, and `layer` is a known layer
-- every node has a string `id` whose prefix equals the file's layer, a `kind` allowed for that layer, and no duplicate IDs (within the file or across files)
-- every edge has `source`, `target`, `relation`, and the relation and its endpoint layers match the table in section 2
+- top level has `schema`, `domain`, `nodes`, `edges`, and `domain` is a known domain
+- every node has a string `id` whose prefix equals the file's domain, a `kind` allowed for that domain, and no duplicate IDs (within the file or across files)
+- every edge has `source`, `target`, `relation`, and the relation and its endpoint domains match the table in section 2
 - `part_of` edges form a forest (no cycles)
 - `uid`, when present, is unique
 
@@ -146,15 +146,15 @@ The validator is hand-written, with no JSON Schema dependency. A real JSON Schem
 
 ### References and sub-graphs (`refs.py`)
 
-Edge endpoints may name a node in any loaded layer. A **sub-graph reference** is an ID ending in `/**`, meaning that node plus all its descendants, found by following `part_of` edges downward. `org:acme/engineering/**` as an edge source expands to one edge per member.
+Edge endpoints may name a node in any loaded domain. A **sub-graph reference** is an ID ending in `/**`, meaning that node plus all its descendants, found by following `part_of` edges downward. `org:acme/engineering/**` as an edge source expands to one edge per member.
 
 Resolution happens at load time and produces one in-memory graph:
 
-1. Load and validate every layer file.
+1. Load and validate every domain file.
 2. Collect all nodes into one ID table, together with the repo graph and the pack-derived process nodes.
 3. Expand sub-graph references.
 4. Check every endpoint exists. Failures are errors, with the rename hint from section 3 when the store has the history.
-5. Add nodes with a `layer` attribute and edges with their `relation` to the NetworkX graph.
+5. Add nodes with a `domain` attribute and edges with their `relation` to the NetworkX graph.
 
 Nothing downstream sees unresolved references, and the resolved graph is what `build` writes to `graph.json`.
 
@@ -174,9 +174,9 @@ YAML comments have no JSON equivalent. The SQLite database (`<home>/workgraph.sq
 
 | Table | Columns | Purpose |
 |---|---|---|
-| `files` | path, layer, json_sha256, yaml_sha256, updated_at | registry of tracked graph files and their pairs |
+| `files` | path, domain, json_sha256, yaml_sha256, updated_at | registry of tracked graph files and their pairs |
 | `comments` | file, item_key, key, position, text | the comments |
-| `node_ids` | uid, id, layer, last_seen | uid history for rename detection |
+| `node_ids` | uid, id, domain, last_seen | uid history for rename detection |
 
 Comment anchors do not use line numbers, so they survive reordering and reformatting:
 
@@ -198,14 +198,14 @@ Fourteen top-level commands, listed alphabetically in `--help`; the helpers sit 
 
 | Command | Does |
 |---|---|
-| `build`, `gaps`, `open` | the repo graph from a workspace file, the default workspace, or `--src` folders and URLs; `build` also merges the layer files |
+| `build`, `gaps`, `open` | the repo graph from a workspace file, the default workspace, or `--src` folders and URLs; `build` also merges the domain files |
 | `init`, `track PATH` | create the home folder; add a project to the default workspace |
 | `status`, `search`, `show` | query the last built graph (`search --semantic` for embeddings) |
 | `ui` | Streamlit app |
 | `import-claude` | backfill from Claude Code |
 | `dump`, `load` | pack the authored data into a tar.gz / merge one (formerly `export` / `import`) |
 | `sync init|push|pull|status` | share through a private git repository |
-| `utils check` | validate layer files and references, report renames, stale YAML, missing uids (`--assign-uids` writes uids) |
+| `utils check` | validate domain files and references, report renames, stale YAML, missing uids (`--assign-uids` writes uids) |
 | `utils convert FILE` | JSON <-> YAML with the comment store |
 | `utils claude-setup [--write]` | Claude Code hooks and the plain `/workgraph` command |
 | `utils clones`, `utils context`, `utils doctor`, `utils areas`, `utils show-llm` | shared files, project context, environment check, list packs, backend readiness (formerly `llm`) |
@@ -215,8 +215,8 @@ Fourteen top-level commands, listed alphabetically in `--help`; the helpers sit 
 
 ```
 src/workgraph/
-  schema.py        # layers, kinds, relation rules, validate_layer()
-  refs.py          # load layer files, expand /** references, merge into the build graph, check integrity
+  schema.py        # domains, kinds, relation rules, validate_domain()
+  refs.py          # load domain files, expand /** references, merge into the build graph, check integrity
   convert.py       # JSON <-> YAML, comment harvest and re-attach
   store.py         # SQLite: registry, comments, uid history, session journal, sync hashes
   syncing.py       # sync tree: export/import tar.gz, git sync, privacy guards
@@ -231,18 +231,18 @@ src/workgraph/
 plugin/            # Claude Code plugin (held back; draft marketplace file in docs/DEV/)
 ```
 
-`pipeline.build_workspace` calls `refs.merge_layers` after the repo graph is built and clustered. Clustering and gap analysis are unchanged: layer nodes are added after clustering, and gap analysis skips nodes that do not belong to an area pack.
+`pipeline.build_workspace` calls `refs.merge_domains` after the repo graph is built and clustered. Clustering and gap analysis are unchanged: domain nodes are added after clustering, and gap analysis skips nodes that do not belong to an area pack.
 
 ## 9. Tests (the original plan; the suite has since grown to 41 tests)
 
 - schema: valid file passes, each rule has a failing case
-- refs: `/**` expansion, broken reference, rename hint, pack-derived `process:` nodes, cross-layer merge into the example workspace
+- refs: `/**` expansion, broken reference, rename hint, pack-derived `process:` nodes, cross-domain merge into the example workspace
 - convert: JSON to YAML to JSON round trip is identical
 - store: comments survive YAML to JSON to YAML, an added comment is not lost on re-conversion, an orphan is kept and reported
 
 ## 10. Home folder, sources and Claude Code (added after the first build)
 
-- **Home folder.** Because the tool is pip-installed, data does not live in the repo: `$WORKGRAPH_HOME` (default `~/workgraph`) holds `workspace.yaml`, `graphs/` (layer files and `store.sqlite`), `out/graph.json`, `cache/` and `src/`. A workspace file's own `graphs/` folder (as in `examples/`) takes precedence over the home one. graphify's AST cache is redirected into `cache/ast/<project>` so neither projects nor the working directory are written to.
+- **Home folder.** Because the tool is pip-installed, data does not live in the repo: `$WORKGRAPH_HOME` (default `~/workgraph`) holds `workspace.yaml`, `graphs/` (domain files and `store.sqlite`), `out/graph.json`, `cache/` and `src/`. A workspace file's own `graphs/` folder (as in `examples/`) takes precedence over the home one. graphify's AST cache is redirected into `cache/ast/<project>` so neither projects nor the working directory are written to.
 - **`--src <URL or path>`.** Builds an in-memory workspace (one project per source, default area `sdlc`). URLs (`https://`, `ssh://`, `git://`, `git@host:path`) are shallow-cloned into `src/<name>` and fast-forwarded on later runs. Nothing from the clone is executed.
 - **Claude Code.** `SessionStart` and `SessionEnd` hooks call `workgraph hook <event>`. Start tracks the project (git root of the session's cwd, never the home folder), logs the session in the `sessions` table and prints a summary for the session context. End records branch and changed files and starts a detached background build when something changed. Handlers swallow all errors. Installing the hooks into `~/.claude/settings.json` happens only through `claude-setup --write`.
 - **Not done.** An MCP server that lets Claude query the graph on demand (the `mcp` extra is declared but unused), writing session records into the graph as nodes instead of a journal table, and per-project area choice when auto-tracking (new projects default to `sdlc`).
@@ -277,7 +277,7 @@ The useful split is **what can be rebuilt** and **what cannot**:
 | Content | Rebuildable? | Synced? |
 |---|---|---|
 | Repo graph (`out/`), AST cache, embeddings, `src/` clones | yes, one `build` | never |
-| Layer files (`custom/graphs/`) | no, authored | yes (`graphs` part, stored as `graphs/` in the sync tree). The **org** layer lists people and is **opt-in** (`--with org`) |
+| Domain files (`custom/graphs/`) | no, authored | yes (`graphs` part, stored as `graphs/` in the sync tree). The **org** domain lists people and is **opt-in** (`--with org`) |
 | YAML comments, uid history | no | yes, as `store/comments.jsonl` and `store/node_ids.jsonl` (`comments` part) |
 | Session journal | no | opt-in (`--with sessions`): it lists changed file names |
 | LLM extraction cache | only by spending subscription time again | opt-in (`--with llm-cache`) |
@@ -293,7 +293,7 @@ The useful split is **what can be rebuilt** and **what cannot**:
 - Credentials embedded in a remote URL are stripped before it is written into `workspace.yaml`.
 - Archive import accepts only plain files and folders, rejects absolute or `..` paths and links, caps the size, and scans the content with the same guard.
 
-**Applying a tree never destroys local work.** For each layer file the database remembers the hash as of the last sync. Unchanged here, changed there: take theirs. Unchanged there: keep ours. Changed on both sides (or never synced before and different): keep ours and write theirs as `<name>.incoming.<ext>` for you to merge by hand, and report it. Comments, uid records and sessions merge as unions. A comment deleted on one machine therefore comes back from the other.
+**Applying a tree never destroys local work.** For each domain file the database remembers the hash as of the last sync. Unchanged here, changed there: take theirs. Unchanged there: keep ours. Changed on both sides (or never synced before and different): keep ours and write theirs as `<name>.incoming.<ext>` for you to merge by hand, and report it. Comments, uid records and sessions merge as unions. A comment deleted on one machine therefore comes back from the other.
 
 **A project without a folder.** After an import, a project from the workspace may have no folder on this machine. It is listed as unresolved and skipped by builds. `workgraph track <folder>` binds it (matching by name or repo URL), and `sync pull --clone-missing` clones it into `<home>/src`.
 
@@ -310,84 +310,84 @@ Limits: `sync pull` uses a fast-forward-only git pull, so if the repository's hi
 ## 14. Open questions
 
 - Whether `uid` should be assigned automatically on first `convert` instead of through `check --assign-uids`.
-- Per-layer packs: the layer vocabulary is Python constants for now. Moving it to YAML packs would match the area-pack approach.
+- Per-domain packs: the domain vocabulary is Python constants for now. Moving it to YAML packs would match the area-pack approach.
 - Process instances (status of a product moving through a template).
 - Whether comments should sync as deletions as well as additions (today a deleted comment returns from the other machine).
 - Whether a team or enterprise mode is wanted at all, which would mean a server with accounts and access control rather than files.
-- Relationship to the `primitives / concepts / applications` three-layer `graph.yaml` of the ZiNets ecosystem.
+- Relationship to the `primitives / concepts / applications` three-domain `graph.yaml` of the ZiNets ecosystem.
 
-## 15. The layered graph: layers as nodes (built)
+## 15. The domain graph: domains as nodes (built)
 
-Today the layers (repo, product, org, process) are a fixed list of names in `schema.py`, and everything lives in one in-memory graph (`graph.json`). That works for the examples and will not for a workspace with tens of thousands of files and symbols, where the UI would draw one hairball. The next step turns the layers themselves into data.
+Today the domains (repo, product, org, process) are a fixed list of names in `schema.py`, and everything lives in one in-memory graph (`graph.json`). That works for the examples and will not for a workspace with tens of thousands of files and symbols, where the UI would draw one hairball. The next step turns the domains themselves into data.
 
 ### Idea
 
-Two graphs, as in a network protocol stack, where each layer talks to its neighbours through a defined interface and nobody hard-codes "the top" or "the bottom":
+Two graphs, as in a network protocol stack, where each domain talks to its neighbours through a defined interface and nobody hard-codes "the top" or "the bottom":
 
-- The **layer graph** is small and always in memory. Its **nodes are layers**; its **edges are layer dependencies** (which layer's nodes may point at which layer's nodes, and by what relation).
-- The **instance graph** is the knowledge graph as built today. Every node already carries a `layer` attribute naming a node of the layer graph.
+- The **domain map** is small and always in memory. Its **nodes are domains**; its **edges are domain dependencies** (which domain's nodes may point at which domain's nodes, and by what relation).
+- The **instance graph** is the knowledge graph as built today. Every node already carries a `domain` attribute naming a node of the domain map.
 
-Terminology: this is a *layered* graph. We do not say macro/micro or levels 0 to N, because those numbers are fixed by the author, while here only the **relative** order matters: a layer is *coarser* than the layers that point at it, and *finer* than the layers it points at.
+Terminology: this is a graph of *domains*. We do not say macro/micro or levels 0 to N, because those numbers are fixed by the author, while here only the **relative** order matters: a domain is *coarser* than the domains that point at it, and *finer* than the domains it points at.
 
-### The layer graph
+### The domain map
 
 Derived from the vocabulary in `schema.py` (single source of truth), not written twice:
 
-| Layer-graph element | Derived from | Example |
+| Domain-map element | Derived from | Example |
 |---|---|---|
-| node (a layer) | `LAYER_KINDS` plus the implicit `repo` layer | `repo`, `product`, `org`, `process` |
-| edge (dependency) | each cross-layer entry of `RELATION_RULES` | `repo` -`belongs_to`-> `product`; `product` -`owned_by`-> `org`; `product` -`follows`-> `process` |
+| node (a domain) | `DOMAIN_KINDS` plus the implicit `repo` domain | `repo`, `product`, `org`, `process` |
+| edge (dependency) | each cross-domain entry of `RELATION_RULES` | `repo` -`belongs_to`-> `product`; `product` -`owned_by`-> `org`; `product` -`follows`-> `process` |
 | edge attribute `relation` | the relation name | `belongs_to` |
-| node attribute `hierarchical` | the layer allows `part_of` (product, org, process) | true/false |
-| node attribute `rank` (coarseness) | longest path from a layer nothing points at; finest layer is 0 | repo 0, product 1, org 2, process 2 |
+| node attribute `hierarchical` | the domain allows `part_of` (product, org, process) | true/false |
+| node attribute `rank` (coarseness) | longest path from a domain nothing points at; finest domain is 0 | repo 0, product 1, org 2, process 2 |
 
-`rank` is computed, never stored in a file. Adding a layer or a relation between two existing layers changes the ranks automatically. Equal ranks mean the layers are siblings, not ordered against each other (org and process).
+`rank` is computed, never stored in a file. Adding a domain or a relation between two existing domains changes the ranks automatically. Equal ranks mean the domains are siblings, not ordered against each other (org and process).
 
 ### Partitioned build output
 
 `build` keeps writing `graph.json` (search, the CLI and the existing tabs depend on it) and also writes a partitioned copy:
 
 ```
-out/layers/
-  layers.json      the layer graph, with node and edge counts per layer
-  <layer>.json     nodes of that layer and the edges whose two ends are both in it
-  cross.json       edges whose ends are in different layers
+out/domains/
+  domains.json      the domain map, with node and edge counts per domain
+  <domain>.json     nodes of that domain and the edges whose two ends are both in it
+  cross.json       edges whose ends are in different domains
 ```
 
-`layers.load_layer(name)` reads one partition. `layers.load_scope(layers)` merges the named partitions plus the `cross.json` edges between them. A view that needs a node's surroundings first asks the layer graph which layers can be adjacent, then loads only those. The repo layer is the big one, so a question about teams and products never touches it.
+`domains.load_domain(name)` reads one partition. `domains.load_scope(domains)` merges the named partitions plus the `cross.json` edges between them. A view that needs a node's surroundings first asks the domain map which domains can be adjacent, then loads only those. The repo domain is the big one, so a question about teams and products never touches it.
 
 ### Views
 
-The visualization follows the layer graph instead of drawing one hairball. The Layers tab of `workgraph ui` has:
+The visualization follows the domain map instead of drawing one hairball. The Domains tab of `workgraph ui` has:
 
-1. **The layer graph** (collapsed by default): layers with their node counts, coarse at the top, dependencies labelled with their relations and edge counts. Cross-layer edges that no declared dependency explains are listed under it.
-2. **A parent canvas**: pick a parent layer (default: the layer just above the finest) and a child layer among the finer layers that point at it. The parent layer is drawn as a graph; a node picker selects one node, shown with a red ring.
-3. **A child canvas below it**: what the child layer holds under that node, via `layers.below`: the child-layer nodes linked to the node or to anything inside it, plus what those contain (their own `part_of` descendants; for a project, every node of that project). For a product that is its repositories with their files, documents and relations. A checkbox adds symbols and code, which are hidden by default.
-4. **Neighbours by coarseness** (expander): the node's links grouped as coarser, finer, same layer or beside.
+1. **The domain map** (collapsed by default): domains with their node counts, coarse at the top, dependencies labelled with their relations and edge counts. Cross-domain edges that no declared dependency explains are listed under it.
+2. **A parent canvas**: pick a parent domain (default: the domain just above the finest) and a child domain among the finer domains that point at it. The parent domain is drawn as a graph; a node picker selects one node, shown with a red ring.
+3. **A child canvas below it**: what the child domain holds under that node, via `domains.below`: the child-domain nodes linked to the node or to anything inside it, plus what those contain (their own `part_of` descendants; for a project, every node of that project). For a product that is its repositories with their files, documents and relations. A checkbox adds symbols and code, which are hidden by default.
+4. **Neighbours by coarseness** (expander): the node's links grouped as coarser, finer, same domain or beside.
 
-Only the partitions a step needs are loaded: `below` reads the node's layer and the child layer, nothing else. The picture itself is the same bundled Cytoscape.js page the Map tab uses (`viz.cytoscape_html`, now with an optional ring for marked nodes). Limit: a click inside the canvas inspects a node but cannot change the selection in Streamlit, so the node is chosen with the picker.
+Only the partitions a step needs are loaded: `below` reads the node's domain and the child domain, nothing else. The picture itself is the same bundled Cytoscape.js page the Map tab uses (`viz.cytoscape_html`, now with an optional ring for marked nodes). Limit: a click inside the canvas inspects a node but cannot change the selection in Streamlit, so the node is chosen with the picker.
 
-`BUILD_RELATIONS` in `schema.py` names the relations the build adds across layers (`in_stage`, `participates_in`: repo to process). They are not allowed in layer files but are part of the layer graph, which is why repo shows a dependency on process as well as on product.
+`BUILD_RELATIONS` in `schema.py` names the relations the build adds across domains (`in_stage`, `participates_in`: repo to process). They are not allowed in domain files but are part of the domain map, which is why repo shows a dependency on process as well as on product.
 
-CLI: `workgraph utils layers` prints the layer graph with ranks and the counts of the last build. `workgraph viz --layer NAME` (existing) draws one layer.
+CLI: `workgraph utils domains` prints the domain map with ranks and the counts of the last build. `workgraph viz --domain NAME` (existing) draws one domain.
 
 ### What this does not change
 
 - `graph.json` stays the canonical built output, so nothing that reads it breaks.
-- Layer files, ids, uids and conversion are unchanged.
-- `part_of` still means containment inside one layer; a layer dependency is not `part_of`.
+- Domain files, ids, uids and conversion are unchanged.
+- `part_of` still means containment inside one domain; a domain dependency is not `part_of`.
 
 ### Honest limits
 
-- The build partitions after writing `graph.json`, and search and the older tabs still load the whole `graph.json`. The memory saving is therefore for the Layers tab only until search moves to the partitions.
-- Opening a repo node loads the whole repo partition. Sharding the repo layer by project is the next step if that gets large.
+- The build partitions after writing `graph.json`, and search and the older tabs still load the whole `graph.json`. The memory saving is therefore for the Domains tab only until search moves to the partitions.
+- Opening a repo node loads the whole repo partition. Sharding the repo domain by project is the next step if that gets large.
 - Not looked at in a real browser yet: the tests run the app headlessly.
-- The repo layer has its own coarse-to-fine structure (project, file, symbol). It stays one layer for now; splitting it by kind into sub-layers is the obvious next use of the same mechanism.
-- Per-layer vocabulary is still Python constants (open question in section 14).
+- The repo domain has its own coarse-to-fine structure (project, file, symbol). It stays one domain for now; splitting it by kind into sub-domains is the obvious next use of the same mechanism.
+- Per-domain vocabulary is still Python constants (open question in section 14).
 
 ### Tests
 
-- layer graph derived from the vocabulary has the expected nodes, edges and ranks, and a new layer shifts ranks
-- partitions written by a build contain each node exactly once, `cross.json` contains exactly the cross-layer edges, and merging all partitions gives back `graph.json`
-- `load_scope` of two layers equals the induced subgraph of the full graph
-- the Layers tab renders for the example workspace
+- domain map derived from the vocabulary has the expected nodes, edges and ranks, and a new domain shifts ranks
+- partitions written by a build contain each node exactly once, `cross.json` contains exactly the cross-domain edges, and merging all partitions gives back `graph.json`
+- `load_scope` of two domains equals the induced subgraph of the full graph
+- the Domains tab renders for the example workspace

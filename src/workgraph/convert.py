@@ -1,4 +1,4 @@
-"""JSON <-> YAML for layer files. YAML comments are kept in the SQLite store (anchored by item, not line number)
+"""JSON <-> YAML for domain files. YAML comments are kept in the SQLite store (anchored by item, not line number)
 and re-attached when JSON is converted back, so they survive the round trip."""
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from zinet.roundtrip import Layout
 from zinet.roundtrip import attach as _attach
 from zinet.roundtrip import harvest as _harvest
 
+from .schema import normalize_legacy
 from .store import Store, file_key
 
 NODE_KEYS = ("id", "uid", "kind", "label")
@@ -47,7 +48,8 @@ def item_key(section: str, item: dict) -> str:
 
 def dump_yaml(doc: dict) -> str:
     """Canonical YAML layout: fixed key order, block style, one item per list entry."""
-    out = {"schema": doc.get("schema"), "layer": doc.get("layer"),
+    normalize_legacy(doc)                       # a file of 0.2.x is written out in the new form
+    out = {"schema": doc.get("schema"), "domain": doc.get("domain"),
            "nodes": [_ordered(n, NODE_KEYS) for n in doc.get("nodes", [])],
            "edges": [_ordered(e, EDGE_KEYS) for e in doc.get("edges", [])]}
     out.update({k: v for k, v in doc.items() if k not in out})
@@ -56,7 +58,7 @@ def dump_yaml(doc: dict) -> str:
     return buf.getvalue()
 
 
-# The comment handling (harvest / attach) is zinet's; this is the layout of a workgraph layer file: `nodes` are named by `id`,
+# The comment handling (harvest / attach) is zinet's; this is the layout of a workgraph domain file: `nodes` are named by `id`,
 # `edges` by `source|relation|target`.
 LAYOUT = Layout(("nodes", "edges"), item_key)
 
@@ -76,7 +78,7 @@ def yaml_to_json(src: Path, dst: Path, store: Store) -> dict:
     doc = _plain(YAML(typ="safe").load(text))
     store.replace_comments(file_key(src), harvest(text))
     dst.write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    store.register(src.with_suffix(""), doc.get("layer") if isinstance(doc, dict) else None)
+    store.register(src.with_suffix(""), doc.get("domain") if isinstance(doc, dict) else None)
     return {"comments": len(store.comments(file_key(src)))}
 
 
@@ -87,6 +89,6 @@ def json_to_yaml(src: Path, dst: Path, store: Store) -> dict:
         store.replace_comments(base, harvest(dst.read_text(encoding="utf-8")))   # keep edits made since last convert
     text, orphans = attach(dump_yaml(doc), store.comments(base))
     dst.write_text(text, encoding="utf-8")
-    store.register(src.with_suffix(""), doc.get("layer"))
-    store.remember_ids(doc.get("layer", ""), doc.get("nodes", []))
+    store.register(src.with_suffix(""), doc.get("domain"))
+    store.remember_ids(doc.get("domain", ""), doc.get("nodes", []))
     return {"comments": len(store.comments(base)), "orphans": len(orphans)}

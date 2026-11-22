@@ -183,7 +183,7 @@ Everything lives in one **home folder**, `~/workgraph` by default. Set `WORKGRAP
 | Path (under the home folder) | Content |
 |---|---|
 | `workspace.yaml` | the default workspace: the projects workgraph tracks (`workgraph track <path>`) |
-| `custom/` | everything you author yourself, with a README explaining it. `custom/graphs/` holds your layer files (org, product, process; JSON and YAML). A `graphs/` folder from an earlier version is moved here automatically |
+| `custom/` | everything you author yourself, with a README explaining it. `custom/graphs/` holds your domain files (org, product, process; JSON and YAML). A `graphs/` folder from an earlier version is moved here automatically |
 | `workgraph.sqlite3` | the database: YAML comments, uid history, Claude Code session journal. It sits at the top of the home folder, outside `custom/` and `sync/`, so it can never be committed or shared by accident. Do not put the home folder in Google Drive, iCloud or Dropbox |
 | `sync/` | the git working tree for `workgraph sync` (text only), created by `sync init` |
 | `out/graph.json` | the built graph |

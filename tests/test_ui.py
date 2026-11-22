@@ -37,26 +37,26 @@ def test_app_without_a_graph_shows_a_message():
     assert not at.exception and any("workgraph build" in e.value for e in at.error)
 
 
-def test_layers_tab_shows_parent_and_child_canvases(monkeypatch):
+def test_domains_tab_shows_parent_and_child_canvases(monkeypatch):
     main(["build", "-c", str(EX / "workspace.yaml")])
     at = AppTest.from_file(str(APP), default_timeout=60).run()
     assert not at.exception
     box = {s.label: s for s in at.selectbox}
-    assert {"Parent layer", "Child layer", "Node in the parent layer"} <= set(box)
-    assert box["Parent layer"].value == "product" and box["Child layer"].value == "repo"     # the layer just above the finest
+    assert {"Parent domain", "Child domain", "Node in the parent domain"} <= set(box)
+    assert box["Parent domain"].value == "product" and box["Child domain"].value == "repo"     # the domain just above the finest
     assert any(m.value.startswith("**Parent: `product`**") for m in at.markdown)
     assert any(m.value.startswith("**Child: `repo` under ") and "loaded `product` and `repo` only" in m.value
                for m in at.markdown)
-    box["Parent layer"].select("org").run()
+    box["Parent domain"].select("org").run()
     assert not at.exception and any(m.value.startswith("**Parent: `org`**") for m in at.markdown)
     assert any(m.value.startswith("**Child: `product` under ") for m in at.markdown)
 
 
-def test_layers_tab_offers_to_create_missing_partitions(monkeypatch):
+def test_domains_tab_offers_to_create_missing_partitions(monkeypatch):
     main(["build", "-c", str(EX / "workspace.yaml")])
     import shutil
-    shutil.rmtree(paths.out_dir() / "layers")
+    shutil.rmtree(paths.out_dir() / "domains")
     at = AppTest.from_file(str(APP), default_timeout=60).run()
-    assert not at.exception and any(b.label == "Create layer partitions from this graph" for b in at.button)
-    next(b for b in at.button if b.label.startswith("Create layer")).click().run()
-    assert not at.exception and (paths.out_dir() / "layers" / "layers.json").exists()
+    assert not at.exception and any(b.label == "Create domain partitions from this graph" for b in at.button)
+    next(b for b in at.button if b.label.startswith("Create domain")).click().run()
+    assert not at.exception and (paths.out_dir() / "domains" / "domains.json").exists()

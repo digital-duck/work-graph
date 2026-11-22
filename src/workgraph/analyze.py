@@ -16,7 +16,7 @@ def find_gaps(M: nx.MultiDiGraph, ws: Workspace) -> list[dict]:
             symbols[k] = symbols.get(k, 0) + 1
     for n, d in M.nodes(data=True):
         if d.get("kind") in ("stage", "project") or d.get("area") not in areas:
-            continue   # process nodes, and layer nodes (product, org, ...) that belong to no area pack
+            continue   # process nodes, and domain nodes (product, org, ...) that belong to no area pack
         for exp in areas[d["area"]].expectations:
             kinds = exp.get("kinds")
             if exp["stage"] not in d.get("stages", []):

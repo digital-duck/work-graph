@@ -10,12 +10,12 @@ from workgraph.cli import main
 
 def graph() -> nx.MultiDiGraph:
     M = nx.MultiDiGraph()
-    M.add_node("project:p", label="p", kind="project", layer="repo")
-    M.add_node("repo:a.py", label="a.py", kind="file", layer="repo", project="p")
-    M.add_node("repo:b.py", label="b.py", kind="file", layer="repo", project="p")
-    M.add_node("repo:c.py", label="c.py", kind="file", layer="repo", project="q", stages=["design"])
-    M.add_node("sym", label="sym", kind="symbol", layer="repo", project="p")
-    M.add_node("product:x", label="X", kind="product", layer="product")
+    M.add_node("project:p", label="p", kind="project", domain="repo")
+    M.add_node("repo:a.py", label="a.py", kind="file", domain="repo", project="p")
+    M.add_node("repo:b.py", label="b.py", kind="file", domain="repo", project="p")
+    M.add_node("repo:c.py", label="c.py", kind="file", domain="repo", project="q", stages=["design"])
+    M.add_node("sym", label="sym", kind="symbol", domain="repo", project="p")
+    M.add_node("product:x", label="X", kind="product", domain="product")
     M.add_edge("repo:a.py", "repo:b.py", relation="imports", confidence="EXTRACTED")
     M.add_edge("repo:b.py", "repo:c.py", relation="imports", confidence="INFERRED")
     M.add_edge("repo:a.py", "project:p", relation="belongs_to", confidence="EXTRACTED")
@@ -34,7 +34,7 @@ def test_select_hides_code_and_hub_edges_by_default():
 
 def test_select_filters_and_neighbourhood():
     M = graph()
-    assert set(viz.select(M, layer="product")[0]) == {"product:x"}
+    assert set(viz.select(M, domain="product")[0]) == {"product:x"}
     assert set(viz.select(M, project="q")[0]) == {"repo:c.py"}
     sub, note = viz.select(M, node="a.py", hops=1)
     assert set(sub) == {"repo:a.py", "repo:b.py", "product:x"} and "1 hop" in note

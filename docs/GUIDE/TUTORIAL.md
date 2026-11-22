@@ -7,7 +7,7 @@ You will:
 1. see the SDLC as a process template
 2. build the repo graph and trace one requirement through the lifecycle
 3. find the gaps in the process and close them
-4. connect the repo to a product, a team and a process (the layered graphs)
+4. connect the repo to a product, a team and a process (the domain graphs)
 5. review a graph file as YAML and keep your comments
 6. query the whole thing from Python
 7. ingest a second, real codebase (`--src`) and add the LLM pass on your Claude subscription
@@ -34,7 +34,7 @@ research    Research: question → literature → hypothesis → experiment → 
 sdlc        Software development lifecycle: requirement → design → build → test → release → operate
 ```
 
-Each line is a **area pack**, a YAML file in `src/workgraph/areas/`. The `sdlc` pack defines the stages, the legal links between them (`design --satisfies--> requirement`, `build --implements--> design`, `test --verifies--> requirement`), the gap rules ("every requirement needs a design and a test") and the path rules that decide which stage a file belongs to (`**/requirements/**` is a requirement, `**/adr/**` is a design, `**/tests/**` is a test). Open `src/workgraph/areas/sdlc.yaml` and read it once; everything below is driven by it.
+Each line is an **area pack**, a YAML file in `src/workgraph/areas/`. The `sdlc` pack defines the stages, the legal links between them (`design --satisfies--> requirement`, `build --implements--> design`, `test --verifies--> requirement`), the gap rules ("every requirement needs a design and a test") and the path rules that decide which stage a file belongs to (`**/requirements/**` is a requirement, `**/adr/**` is a design, `**/tests/**` is a test). Open `src/workgraph/areas/sdlc.yaml` and read it once; everything below is driven by it.
 
 SDLC is one process among many. A different process, such as research or publishing, is another pack. Section 4 adds a process that is not a pack at all.
 
@@ -66,7 +66,7 @@ workgraph build -c acme-shop/workspace.yaml
   test         {'acme-shop': 1}
   release      {}
   operate      {}
-layers: process 7, repo 16
+domains: process 7, repo 16
 warning: docs/adr/ADR-002.md: broken reference `satisfies: REQ-099`
 wrote /tmp/tutorial-home/out/graph.json
 ```
@@ -143,9 +143,9 @@ The explicit `# verifies: REQ-002` covered the requirement, and the import of `c
 
 This is the process doing its job: the graph tells you what is missing at each stage, instead of someone having to remember it.
 
-## 4. Layers: the repo, the product, the team and the process
+## 4. Domains: the repo, the product, the team and the process
 
-So far the graph covers one repo. The `graphs/` directory next to `workspace.yaml` adds more layers, each a JSON file (the canonical form) with a YAML twin for review:
+So far the graph covers one repo. The `graphs/` directory next to `workspace.yaml` adds more domains, each a JSON file (the canonical form) with a YAML twin for review:
 
 ```
 graphs/
@@ -154,7 +154,7 @@ graphs/
   process.json  process.yaml    # stakeholder interview ... feedback
 ```
 
-Layer nodes use readable IDs of the form `<layer>:<path>`, for example `org:acme/engineering/commerce/payments`. Read `graphs/product.yaml`. The part that links the layers is five edges:
+Domain nodes use readable IDs of the form `<domain>:<path>`, for example `org:acme/engineering/commerce/payments`. Read `graphs/product.yaml`. The part that links the domains is five edges:
 
 ```yaml
   - source: project:acme-shop                  # the repo graph (a project node)
@@ -171,9 +171,9 @@ Layer nodes use readable IDs of the form `<layer>:<path>`, for example `org:acme
     target: process:delivery                   # the stakeholder-to-feedback process
 ```
 
-Nodes are defined once and referenced by ID from other layers, so the Payments team appears in the graph once and not once per repo or product.
+Nodes are defined once and referenced by ID from other domains, so the Payments team appears in the graph once and not once per repo or product.
 
-Two processes are linked here. `process:sdlc` was not written by hand: every area pack in the workspace becomes a process template, with its stages `part_of` it. `process:delivery` is a layer file, a process that is not a pack: eight steps (stakeholder interview, requirement spec, solution design, prototyping, build, test, release, feedback), each `part_of` the process and joined by `precedes`. A product can follow several processes.
+Two processes are linked here. `process:sdlc` was not written by hand: every area pack in the workspace becomes a process template, with its stages `part_of` it. `process:delivery` is a domain file, a process that is not a pack: eight steps (stakeholder interview, requirement spec, solution design, prototyping, build, test, release, feedback), each `part_of` the process and joined by `precedes`. A product can follow several processes.
 
 Check that every reference resolves:
 
@@ -182,10 +182,10 @@ workgraph utils check -c workspace.yaml
 ```
 
 ```
-3 layer files, 18 nodes, 27 edges; 0 errors, 0 notes
+3 domain files, 18 nodes, 27 edges; 0 errors, 0 notes
 ```
 
-`check` validates each file's structure (allowed node kinds per layer, allowed relations between layers, no cycles in `part_of`) and then every cross-graph reference. Break one on purpose to see it: rename `org:acme/engineering/commerce/payments` in `graphs/org.json` (the node and its edges) and run `check` again. The product's `owned_by` edge now fails, and because each node carries a short `uid` that survives a rename, the message says the node was **renamed** and points at the new ID instead of just saying "broken". Undo the edit before continuing.
+`check` validates each file's structure (allowed node kinds per domain, allowed relations between domains, no cycles in `part_of`) and then every cross-graph reference. Break one on purpose to see it: rename `org:acme/engineering/commerce/payments` in `graphs/org.json` (the node and its edges) and run `check` again. The product's `owned_by` edge now fails, and because each node carries a short `uid` that survives a rename, the message says the node was **renamed** and points at the new ID instead of just saying "broken". Undo the edit before continuing.
 
 Now build everything:
 
@@ -196,10 +196,10 @@ workgraph build -c workspace.yaml
 ```
 60 nodes, 143 edges, 8 communities
 ...
-layers: org 6, process 23, product 3, repo 28
+domains: org 6, process 23, product 3, repo 28
 ```
 
-References are written briefly in the files, but at run time they are all resolved into **one** in-memory graph. Every node has a `layer`, so a single query can go from a function to the team that owns the product it belongs to.
+References are written briefly in the files, but at run time they are all resolved into **one** in-memory graph. Every node has a `domain`, so a single query can go from a function to the team that owns the product it belongs to.
 
 A reference can also point at a whole sub-graph with a `/**` suffix: an edge from `product:acme/retail/**` means one edge from the node and each of its descendants.
 
@@ -240,7 +240,7 @@ If you edit a YAML file and forget to convert it, `check` and `build` tell you (
 
 ## 6. Ask the graph questions
 
-`build` writes `$WORKGRAPH_HOME/out/graph.json`, a NetworkX node-link file. Load it and walk the layers:
+`build` writes `$WORKGRAPH_HOME/out/graph.json`, a NetworkX node-link file. Load it and walk the domains:
 
 ```python
 import json
@@ -262,7 +262,7 @@ print(out("product:acme/retail/shop", "owned_by"))    # ['org:acme/engineering/c
 print(out("product:acme/retail/shop", "follows"))     # ['process:sdlc', 'process:delivery']
 ```
 
-The first query is what the README means by *graph-grounded context*: the requirement, its design decision and its test come back as a connected set, without searching text. The second crosses three layers (repo, product, org) and two processes in a few lines. An AI assistant or coding agent can be handed exactly this sub-graph as its context before a task.
+The first query is what the README means by *graph-grounded context*: the requirement, its design decision and its test come back as a connected set, without searching text. The second crosses three domains (repo, product, org) and two processes in a few lines. An AI assistant or coding agent can be handed exactly this sub-graph as its context before a task.
 
 ## 7. Ingest a second codebase: conceptbook-app
 
@@ -286,7 +286,7 @@ Building 1 project ...
   test         {'conceptbook-app': 4}
   release      {'conceptbook-app': 3}
   operate      {}
-layers: process 7, repo 1330
+domains: process 7, repo 1330
 wrote /tmp/tutorial-home/out/graph.json
 timing: 8.8s total
   scan files                     6.0s
@@ -363,7 +363,7 @@ The result is a graph that mixes what the code *is* (symbols, imports, tests) wi
 
 ## 8. Search it and review it in a browser
 
-With the graph built (section 4 built all three layers), query it from the command line:
+With the graph built (section 4 built all three domains), query it from the command line:
 
 ```bash
 workgraph status
@@ -372,7 +372,7 @@ workgraph status
 ```
 graph: /tmp/tutorial-home/out/graph.json (built 2026-10-18 11:37)
 60 nodes, 143 edges
-layers:   org 6, process 23, product 3, repo 28
+domains:   org 6, process 23, product 3, repo 28
 projects: acme-shop 10, rq-demo 6
 gaps:     5  (experiment has no analysis 2, question has no hypothesis 1, requirement has no design 1, requirement has no test 1)
 ```
@@ -391,7 +391,7 @@ workgraph search "checkout test"
    2.82  [process/stage] Test   (:areas/sdlc.yaml)
 ```
 
-Note that one query returned nodes from three layers: the test file you wrote in step 3, a decision, a product application, a code file and a process stage. (Your numbers will match these only if you followed the steps in order.)
+Note that one query returned nodes from three domains: the test file you wrote in step 3, a decision, a product application, a code file and a process stage. (Your numbers will match these only if you followed the steps in order.)
 
 **Semantic search** ranks by meaning, so you can describe what you want instead of guessing its name:
 
@@ -421,7 +421,7 @@ workgraph show REQ-002
 acme-shop:doc_req_002
   label: REQ-002: Customers can check out
   kind: requirement
-  layer: repo
+  domain: repo
   project: acme-shop
   stages: ['requirement']
   source_file: docs/requirements/REQ-002.md
@@ -437,7 +437,7 @@ The same things are available in a browser, for reviewing rather than scripting:
 workgraph ui                               # Streamlit is installed with workgraph; use a clean environment (see SETUP.md)
 ```
 
-The app opens at `http://localhost:8501` with four tabs: **Overview** (counts per layer, project and kind), **Search** (keyword or semantic, with the backend choice and a note on which one answered), **Browse** (every node, filterable by name) and **Gaps** (each rule's findings). The sidebar filters by layer, project, kind and stage across all tabs. Click any row and a panel opens below with the node's attributes, its links in and out, and a small diagram of its neighbourhood. After running `workgraph build` again, press *Reload*.
+The app opens at `http://localhost:8501` with four tabs: **Overview** (counts per domain, project and kind), **Search** (keyword or semantic, with the backend choice and a note on which one answered), **Browse** (every node, filterable by name) and **Gaps** (each rule's findings). The sidebar filters by domain, project, kind and stage across all tabs. Click any row and a panel opens below with the node's attributes, its links in and out, and a small diagram of its neighbourhood. After running `workgraph build` again, press *Reload*.
 
 ## 9. Make Claude Code feed the graph
 
@@ -503,7 +503,7 @@ workgraph sync push                        # after you change something
 workgraph sync pull --clone-missing        # on the other machine
 ```
 
-After the import, projects have no folder on machine B yet; `workgraph track <folder>` binds one and `--clone-missing` clones them. The org layer (it names people), the session journal and the LLM cache are left out unless you add `--with org,sessions,llm-cache`. See the User Guide section "Moving to another machine" for the safety rules and what happens when both machines edit the same file.
+After the import, projects have no folder on machine B yet; `workgraph track <folder>` binds one and `--clone-missing` clones them. The org domain (it names people), the session journal and the LLM cache are left out unless you add `--with org,sessions,llm-cache`. See the User Guide section "Moving to another machine" for the safety rules and what happens when both machines edit the same file.
 
 ## 11. What you have seen, and where next
 
@@ -514,7 +514,7 @@ After the import, projects have no folder on machine B yet; `workgraph track <fo
 | 3 | gap rules are graph queries over those stages and links |
 | 4 | several graphs reference each other by ID and resolve into one in-memory graph |
 | 5 | JSON is canonical, YAML is for human review, comments survive the round trip |
-| 6 | the resolved graph answers cross-layer questions |
+| 6 | the resolved graph answers cross-domain questions |
 | 7 | any folder or git URL can be ingested with `--src`, and an LLM pass adds the intent hidden in prose |
 | 8 | the same graph can be searched by name or by meaning, and reviewed in a browser |
 | 9 | Claude Code sessions are tracked and summarized automatically, so the graph acts as memory |
@@ -524,5 +524,5 @@ Next steps:
 
 - Point a workspace at your own repo: copy `examples/acme-shop/workspace.yaml`, set `path:`, and run `build` and `gaps`.
 - Add the LLM pass for planning prose: `workgraph open --semantic --adapter cc_cli -c acme-shop/workspace.yaml` extracts work items from `ROADMAP.md` (needs a logged-in `claude` CLI, see [SETUP.md](SETUP.md)).
-- Write your own process as a layer file or an area pack: see [USER-GUIDE.md](USER-GUIDE.md).
-- Read the design behind the layers, IDs and the comment store: [../DEV/README-design.md](../DEV/README-design.md).
+- Write your own process as a domain file or an area pack: see [USER-GUIDE.md](USER-GUIDE.md).
+- Read the design behind the domains, IDs and the comment store: [../DEV/README-design.md](../DEV/README-design.md).

@@ -1,4 +1,4 @@
-"""Processing layer: artifact type -> processor. Each processor returns a graphify extraction dict
+"""Processing domain: artifact type -> processor. Each processor returns a graphify extraction dict
 (plus an optional `refs` list of unresolved cross-references the pipeline resolves later)."""
 from __future__ import annotations
 

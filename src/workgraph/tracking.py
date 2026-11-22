@@ -20,10 +20,10 @@ CUSTOM_README = """# custom/
 
 Everything in this folder is yours: workgraph reads it but never creates content here on its own.
 
-- `graphs/`: layer files that describe what is not in your code: `product.json` (products), `org.json` (company,
+- `graphs/`: domain files that describe what is not in your code: `product.json` (products), `org.json` (company,
   teams, people), `process.json` (a delivery process). Each has a `.yaml` twin for review. They are merged into the
   graph on every `workgraph build`. Check them with `workgraph utils check`; convert with `workgraph utils convert`.
-  Examples to copy: `examples/graphs/` in the repository. Guide: docs/GUIDE/USER-GUIDE.md, "Layers".
+  Examples to copy: `examples/graphs/` in the repository. Guide: docs/GUIDE/USER-GUIDE.md, "Domains".
 - `areas/`: your own area packs, e.g. `areas/my-process.yaml`. Use one by name (`area: my-process` in a
   workspace project). A pack here with the same name as a built-in one replaces it. List them with
   `workgraph utils areas`; copy a built-in from the package's `areas/` folder to start.
@@ -35,7 +35,7 @@ Everything outside this folder (workspace.yaml, workgraph.sqlite3, out/, cache/,
 def init_home() -> Path:
     h = paths.home()
     old = paths.legacy_graphs_dir()
-    if old.is_dir() and not paths.graphs_dir().exists():       # layer files used to live in <home>/graphs
+    if old.is_dir() and not paths.graphs_dir().exists():       # domain files used to live in <home>/graphs
         paths.custom_dir().mkdir(parents=True, exist_ok=True)
         old.rename(paths.graphs_dir())
     old_areas = paths.custom_dir() / "domains"                 # area packs used to be called domain packs (0.3.0)

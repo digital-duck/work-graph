@@ -1,6 +1,6 @@
 {
-  "schema": "workgraph/1",
-  "layer": "product",
+  "schema": "workgraph/2",
+  "domain": "product",
   "nodes": [
     {
       "id": "product:acme/retail",

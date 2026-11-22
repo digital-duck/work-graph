@@ -39,7 +39,7 @@ def test_keyword_search_ranks_names_first_and_supports_phrases_and_prefixes(buil
 
 def test_filters(built):
     _, docs = built
-    assert {d.layer for d in query.filter_docs(docs, layer="org")} == {"org"}
+    assert {d.domain for d in query.filter_docs(docs, domain="org")} == {"org"}
     assert all(d.project == "rq-demo" for d in query.filter_docs(docs, project="rq-demo"))
     assert query.filter_docs(docs, kind="team")
 
@@ -77,7 +77,7 @@ def test_semantic_ollama_path_uses_cache(built, monkeypatch):
 def test_summary_neighbors_dot_and_gaps(built):
     M, _ = built
     s = query.summary(M)
-    assert set(s["layers"]) == {"repo", "process", "product", "org"} and s["projects"]["acme-shop"] > 0
+    assert set(s["domains"]) == {"repo", "process", "product", "org"} and s["projects"]["acme-shop"] > 0
     nb = query.neighbors(M, "product:acme/retail/shop")
     assert ("follows", "process:sdlc", "Software development lifecycle") in nb["out"] or any(r == "follows" for r, *_ in nb["out"])
     assert "digraph" in query.to_dot(M, "product:acme/retail/shop")
@@ -89,8 +89,8 @@ def test_cli_status_search_show_context(tmp_path, capsys):
     capsys.readouterr()
     main(["status"])
     out = capsys.readouterr().out
-    assert "layers:" in out and "gaps:" in out
-    main(["search", "checkout", "--layer", "repo"])
+    assert "domains:" in out and "gaps:" in out
+    main(["search", "checkout", "--domain", "repo"])
     assert "Checkout" in capsys.readouterr().out
     main(["show", "REQ-002"])
     out = capsys.readouterr().out

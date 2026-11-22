@@ -10,14 +10,14 @@ import networkx as nx
 
 from .analyze import find_gaps
 from . import paths
-from . import layers
+from . import domains
 from .area import Area, Workspace, available_areas, custom_area_files, validate_pack
 from .sources import workspace_from_sources
 from .llm import BILLING, check_backend, resolve_backend
 from .pipeline import build_workspace, stage_summary
 from .progress import NullProgress, Progress
 from . import query
-from .refs import assign_uids, layer_summary, load_layers, merge_layers, missing_uids, stale_notes
+from .refs import assign_uids, domain_summary, load_domains, merge_domains, missing_uids, stale_notes
 
 
 def _workspace(args) -> Workspace:
@@ -75,14 +75,14 @@ def cmd_migrate(args) -> None:
     print(f"{'nothing to migrate' if not done else ('%d change(s) %s' % (len(done), 'found (dry run)' if args.dry_run else 'made'))}")
 
 
-def cmd_layers(args) -> None:
-    """Print the layer graph: coarsest layer first, its dependencies, and the counts of the last build."""
-    G = layers.layer_graph()
+def cmd_domains(args) -> None:
+    """Print the domain map: coarsest domain first, its dependencies, and the counts of the last build."""
+    G = domains.domain_map()
     out = Path(args.out) if args.out else None
-    meta = layers.load_meta(out) if layers.available(out) else None
-    counts = {x["id"]: x for x in meta["layers"]} if meta else {}
-    print("layers, coarsest first (rank 0 = finest):")
-    for n in layers.by_coarseness(G):
+    meta = domains.load_meta(out) if domains.available(out) else None
+    counts = {x["id"]: x for x in meta["domains"]} if meta else {}
+    print("domains, coarsest first (rank 0 = finest):")
+    for n in domains.by_coarseness(G):
         c = counts.get(n)
         print(f"  {n:<9} rank {G.nodes[n]['rank']}" + (f"   {c['nodes']} nodes, {c['edges']} edges" if c else ""))
     print("dependencies (source points at the coarser target):")
@@ -92,7 +92,7 @@ def cmd_layers(args) -> None:
             n = deps.get((u, v, r))
             print(f"  {u} -{r}-> {v}" + (f"   {n} edges" if n is not None else ""))
     if meta and meta["undeclared"]:
-        print("cross-layer edges outside the declared dependencies (informational):")
+        print("cross-domain edges outside the declared dependencies (informational):")
         for x in meta["undeclared"]:
             print(f"  {x['source']} -{x['relation']}-> {x['target']}   {x['edges']} edges")
     if not meta:
@@ -171,9 +171,9 @@ def cmd_build(args) -> None:
         print(f"[{dom}]")
         for s in ws.areas[dom].stages:
             print(f"  {s:<12} {stages.get(s, {})}")
-    counts = layer_summary(M)
+    counts = domain_summary(M)
     if len(counts) > 1:
-        print("layers: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items())))
+        print("domains: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items())))
     clones = M.graph.get("clones", [])
     if clones:
         print(f"cross-project: {sum(g['identical'] for g in clones)} identical, "
@@ -185,14 +185,14 @@ def cmd_build(args) -> None:
     with args.progress.phase("writing graph.json", "write graph"):
         (out / "graph.json").write_text(json.dumps(nx.node_link_data(M, edges="edges"), default=str), encoding="utf-8")
     print(f"wrote {out / 'graph.json'}")
-    with args.progress.phase("writing layer partitions", "write layers"):
-        print(f"wrote {layers.write_partitions(M, out / 'layers')}")
+    with args.progress.phase("writing domain partitions", "write domains"):
+        print(f"wrote {domains.write_partitions(M, out / 'domains')}")
     if args.progress.enabled:
         print(args.progress.table())          # where the time went
 
 
 def cmd_check(args) -> None:
-    """Validate the layer files and every cross-graph reference; report renames, stale YAML, missing uids."""
+    """Validate the domain files and every cross-graph reference; report renames, stale YAML, missing uids."""
     from .store import Store
     ws = _workspace(args)
     if not ws.graphs_dir:
@@ -200,9 +200,9 @@ def cmd_check(args) -> None:
     if args.assign_uids:
         print(f"assigned {assign_uids(ws.graphs_dir)} uids")
     with Store(paths.store_path()) as store:
-        docs, errors = load_layers(ws.graphs_dir)
+        docs, errors = load_domains(ws.graphs_dir)
         for name, doc in docs.items():
-            store.remember_ids(doc["layer"], doc["nodes"])
+            store.remember_ids(doc["domain"], doc["nodes"])
         M, _, warnings = build_workspace(ws)
         merge_problems = [w for w in warnings if w.split(":")[0].endswith(".json")]
         notes = stale_notes(ws.graphs_dir, store) + missing_uids(docs)
@@ -211,14 +211,14 @@ def cmd_check(args) -> None:
         print(f"error: {p}")
     for n in dict.fromkeys(notes):
         print(f"note: {n}")
-    print(f"{len(docs)} layer files, {sum(len(d['nodes']) for d in docs.values())} nodes, "
+    print(f"{len(docs)} domain files, {sum(len(d['nodes']) for d in docs.values())} nodes, "
           f"{sum(len(d['edges']) for d in docs.values())} edges; {len(problems)} errors, {len(set(notes))} notes")
     if problems:
         raise SystemExit(1)
 
 
 def cmd_convert(args) -> None:
-    """JSON <-> YAML for a layer file; YAML comments are saved in, and restored from, the SQLite store."""
+    """JSON <-> YAML for a domain file; YAML comments are saved in, and restored from, the SQLite store."""
     from .convert import json_to_yaml, yaml_to_json
     from .store import Store
     src = Path(args.file)
@@ -237,7 +237,7 @@ def cmd_init(args) -> None:
     from .tracking import init_home
     h = init_home()
     print(f"workgraph home: {h}")
-    for name in ("workspace.yaml", "workgraph.sqlite3", "custom/ (your layer files go in custom/graphs/)", "out/", "cache/",
+    for name in ("workspace.yaml", "workgraph.sqlite3", "custom/ (your domain files go in custom/graphs/)", "out/", "cache/",
                  "src/ (created on first --src URL)"):
         print(f"  {name}")
 
@@ -370,7 +370,7 @@ def _docs(args):
         roots = query.roots_from_workspace(_workspace(argparse.Namespace(src=None, config=None, area="sdlc")))
     except (FileNotFoundError, ValueError, KeyError):
         roots = {}
-    docs = query.filter_docs(query.build_docs(M, roots), layer=args.layer, project=args.project, kind=args.kind)
+    docs = query.filter_docs(query.build_docs(M, roots), domain=args.domain, project=args.project, kind=args.kind)
     return M, docs
 
 
@@ -386,7 +386,7 @@ def cmd_search(args) -> None:
         print("no matches")
     for score, d in hits:
         where = f"{d.project}:{d.source_file}" if d.source_file else d.project
-        print(f"{score:7.2f}  [{d.layer}/{d.kind}] {d.label}   ({where})")
+        print(f"{score:7.2f}  [{d.domain}/{d.kind}] {d.label}   ({where})")
         print(f"         id: {d.id}")
 
 
@@ -404,7 +404,7 @@ def cmd_show(args) -> None:
         node = matches[0]
     d = M.nodes[node]
     print(node)
-    for k in ("label", "kind", "layer", "project", "area", "stages", "source_file", "status", "origin", "summary"):
+    for k in ("label", "kind", "domain", "project", "area", "stages", "source_file", "status", "origin", "summary"):
         if d.get(k):
             print(f"  {k}: {d[k]}")
     nb = query.neighbors(M, node)
@@ -415,14 +415,14 @@ def cmd_show(args) -> None:
 
 
 def cmd_status(args) -> None:
-    """What the last build knows: layers, projects, kinds, and the session journal."""
+    """What the last build knows: domains, projects, kinds, and the session journal."""
     graph = Path(args.graph) if args.graph else paths.out_dir() / "graph.json"
     M = query.load_graph(graph)
     s = query.summary(M)
     import time
     print(f"graph: {graph} (built {time.strftime('%Y-%m-%d %H:%M', time.localtime(graph.stat().st_mtime))})")
     print(f"{s['nodes']} nodes, {s['edges']} edges")
-    print("layers:   " + ", ".join(f"{k} {v}" for k, v in sorted(s["layers"].items())))
+    print("domains:   " + ", ".join(f"{k} {v}" for k, v in sorted(s["domains"].items())))
     print("projects: " + (", ".join(f"{k} {v}" for k, v in sorted(s["projects"].items())) or "none"))
     gaps = query.gaps_for(M)
     by_rule: dict[str, int] = {}
@@ -472,7 +472,7 @@ def cmd_viz(args) -> None:
         raise SystemExit(f"workgraph: no graph at {graph}; run `workgraph build` first")
     M = query.load_graph(graph)
     try:
-        out, note, n = viz.render(M, args.engine, args.out, layer=args.layer, project=args.project, kind=args.kind,
+        out, note, n = viz.render(M, args.engine, args.out, domain=args.domain, project=args.project, kind=args.kind,
                                   stage=args.stage, node=args.node, hops=args.hops, include_code=args.all, hubs=args.hubs,
                                   max_nodes=args.max_nodes)
     except (ValueError, RuntimeError) as e:
@@ -555,20 +555,20 @@ def main(argv: list[str] | None = None) -> None:
         epilog="Run `workgraph COMMAND -h` for the options of one command. Guides: docs/GUIDE in the repository.")
     sub = ap.add_subparsers(dest="cmd", required=True, title="commands", metavar="COMMAND")
     utils = sub.add_parser("utils", formatter_class=_Help,
-                           help="helper commands (areas, check, claude-setup, clones, context, convert, doctor, layers, migrate, show-llm, validate-pack)",
+                           help="helper commands (areas, check, claude-setup, clones, context, convert, doctor, domains, migrate, show-llm, validate-pack)",
                            description="Helper commands: diagnostics, validation, conversion and setup.")
     usub = utils.add_subparsers(dest="util", required=True, title="utils", metavar="SUBCOMMAND")
-    s = usub.add_parser("check", help="validate layer files and cross-graph references")
+    s = usub.add_parser("check", help="validate domain files and cross-graph references")
     s.add_argument("-c", "--config", help="workspace file (default: ./workspace.yaml, else <home>/workspace.yaml)")
-    s.add_argument("--assign-uids", action="store_true", help="write a uid into layer nodes that lack one")
+    s.add_argument("--assign-uids", action="store_true", help="write a uid into domain nodes that lack one")
     s.set_defaults(fn=cmd_check)
-    s = usub.add_parser("layers", help="show the layer graph (layers as nodes, dependencies as edges) and build counts")
-    s.add_argument("-o", "--out", help="layer partitions folder (default: <home>/out/layers)")
-    s.set_defaults(fn=cmd_layers)
+    s = usub.add_parser("domains", help="show the domain map (domains as nodes, dependencies as edges) and build counts")
+    s.add_argument("-o", "--out", help="domain partitions folder (default: <home>/out/domains)")
+    s.set_defaults(fn=cmd_domains)
     s = usub.add_parser("validate-pack", help="check area packs (files or names) and list every problem")
     s.add_argument("pack", nargs="+", help="a pack file (.yaml) or the name of a built-in or custom pack")
     s.set_defaults(fn=cmd_validate_pack)
-    s = usub.add_parser("convert", help="convert a layer file between JSON and YAML, keeping YAML comments")
+    s = usub.add_parser("convert", help="convert a domain file between JSON and YAML, keeping YAML comments")
     s.add_argument("file")
     s.add_argument("-o", "--out")
     s.add_argument("--db", help="comment store (default: <home>/workgraph.sqlite3)")
@@ -612,7 +612,7 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("--semantic", action="store_true", help="rank by meaning: ollama or sentence-transformers embeddings, else TF-IDF")
     s.add_argument("--backend", default="auto", choices=["auto", "ollama", "sbert", "tfidf"])
     s.add_argument("--limit", type=int, default=15)
-    s.add_argument("--layer"); s.add_argument("--project"); s.add_argument("--kind")
+    s.add_argument("--domain"); s.add_argument("--project"); s.add_argument("--kind")
     s.add_argument("--graph", help="graph file (default: <home>/out/graph.json)")
     s.set_defaults(fn=cmd_search)
     s = sub.add_parser("show", help="one node: attributes and its links")
@@ -630,7 +630,7 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("--engine", default="cytoscape", choices=["cytoscape", "graphviz", "mermaid", "ascii", "pyvis", "graphify"],
                    help="drawing engine (default cytoscape: interactive, bundled, works offline)")
     s.add_argument("--list-engines", action="store_true", help="show the engines and whether each is ready")
-    s.add_argument("--layer"); s.add_argument("--project"); s.add_argument("--kind"); s.add_argument("--stage")
+    s.add_argument("--domain"); s.add_argument("--project"); s.add_argument("--kind"); s.add_argument("--stage")
     s.add_argument("--node", help="draw this node (id or exact label) and its neighbourhood")
     s.add_argument("--hops", type=int, default=2, help="neighbourhood radius for --node (default 2)")
     s.add_argument("--all", action="store_true", help="include symbol, external and rationale nodes (large)")

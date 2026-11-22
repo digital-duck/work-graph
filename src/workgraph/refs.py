@@ -1,5 +1,5 @@
-"""Layer files -> the in-memory graph. References (including `/**` sub-graph references) are resolved here,
-so everything downstream sees one NetworkX graph whose nodes carry a `layer` attribute."""
+"""Domain files -> the in-memory graph. References (including `/**` sub-graph references) are resolved here,
+so everything downstream sees one NetworkX graph whose nodes carry a `domain` attribute."""
 from __future__ import annotations
 
 import json
@@ -9,27 +9,28 @@ from pathlib import Path
 import networkx as nx
 
 from .area import Workspace
-from .schema import layer_of, validate_layer
+from .schema import domain_of, normalize_legacy, validate_domain
 from .store import Store, file_key, sha256
 
 GLOB = "/**"
 
 
-def layer_files(graphs_dir: Path) -> list[Path]:
+def domain_files(graphs_dir: Path) -> list[Path]:
     return sorted(graphs_dir.glob("*.json"))
 
 
-def load_layers(graphs_dir: Path) -> tuple[dict[str, dict], list[str]]:
-    """Read and validate every JSON layer file. Returns ({file name: doc}, errors). Invalid files are skipped."""
+def load_domains(graphs_dir: Path) -> tuple[dict[str, dict], list[str]]:
+    """Read and validate every JSON domain file. Returns ({file name: doc}, errors). Invalid files are skipped."""
     docs: dict[str, dict] = {}
     errs: list[str] = []
-    for p in layer_files(graphs_dir):
+    for p in domain_files(graphs_dir):
         try:
             doc = json.loads(p.read_text(encoding="utf-8"))
         except json.JSONDecodeError as e:
             errs.append(f"{p.name}: invalid JSON ({e})")
             continue
-        found = validate_layer(doc, p.name)
+        errs += [f"{p.name}: {n}" for n in normalize_legacy(doc)]
+        found = validate_domain(doc, p.name)
         if found:
             errs += found
         else:
@@ -68,9 +69,9 @@ def missing_uids(docs: dict[str, dict]) -> list[str]:
 
 
 def assign_uids(graphs_dir: Path) -> int:
-    """Write a fresh uid into every layer node that lacks one. Edits the JSON files in place."""
+    """Write a fresh uid into every domain node that lacks one. Edits the JSON files in place."""
     count = 0
-    docs, _ = load_layers(graphs_dir)
+    docs, _ = load_domains(graphs_dir)
     taken = {n["uid"] for d in docs.values() for n in d["nodes"] if n.get("uid")}
     for name, doc in docs.items():
         changed = False
@@ -106,19 +107,19 @@ def add_process_templates(M: nx.MultiDiGraph, ws: Workspace) -> None:
     """Every area pack is a process template: `process:<area>` with its stages `part_of` it."""
     for name, dom in ws.areas.items():
         pid = f"process:{name}"
-        M.add_node(pid, label=dom.label, kind="process", layer="process", stages=[], source_file=f"areas/{name}.yaml")
+        M.add_node(pid, label=dom.label, kind="process", domain="process", stages=[], source_file=f"areas/{name}.yaml")
         for s in dom.stages:
             M.add_edge(dom.stage_node(s), pid, relation="part_of", confidence="EXTRACTED")
 
 
-def merge_layers(M: nx.MultiDiGraph, ws: Workspace, store: Store | None = None) -> list[str]:
-    """Add process templates and the layer files to the build graph. Returns problems as warnings."""
+def merge_domains(M: nx.MultiDiGraph, ws: Workspace, store: Store | None = None) -> list[str]:
+    """Add process templates and the domain files to the build graph. Returns problems as warnings."""
     for _, d in M.nodes(data=True):
-        d.setdefault("layer", "process" if d.get("kind") == "stage" else "repo")
+        d.setdefault("domain", "process" if d.get("kind") == "stage" else "repo")
     add_process_templates(M, ws)
     if not ws.graphs_dir or not ws.graphs_dir.is_dir():
         return []
-    docs, problems = load_layers(ws.graphs_dir)
+    docs, problems = load_domains(ws.graphs_dir)
     problems += stale_notes(ws.graphs_dir, store)
 
     owner: dict[str, str] = {}
@@ -142,7 +143,7 @@ def merge_layers(M: nx.MultiDiGraph, ws: Workspace, store: Store | None = None) 
         for n in doc["nodes"]:
             if n["id"] in owner and owner[n["id"]] == name:
                 attrs = {"label": n["id"], **{k: v for k, v in n.items() if k != "id"},
-                         "layer": doc["layer"], "source_file": f"graphs/{name}", "stages": []}
+                         "domain": doc["domain"], "source_file": f"graphs/{name}", "stages": []}
                 M.add_node(n["id"], **attrs)
         for e in doc["edges"]:
             ends = []
@@ -160,15 +161,15 @@ def merge_layers(M: nx.MultiDiGraph, ws: Workspace, store: Store | None = None) 
                         M.add_edge(u, v, **attrs)
     if store:
         for doc in docs.values():
-            store.remember_ids(doc["layer"], doc["nodes"])
+            store.remember_ids(doc["domain"], doc["nodes"])
     return problems
 
 
-def layer_summary(M: nx.MultiDiGraph) -> dict[str, int]:
+def domain_summary(M: nx.MultiDiGraph) -> dict[str, int]:
     out: dict[str, int] = {}
     for _, d in M.nodes(data=True):
-        out[d.get("layer", "repo")] = out.get(d.get("layer", "repo"), 0) + 1
+        out[d.get("domain", "repo")] = out.get(d.get("domain", "repo"), 0) + 1
     return out
 
 
-__all__ = ["merge_layers", "load_layers", "layer_summary", "layer_of"]
+__all__ = ["merge_domains", "load_domains", "domain_summary", "domain_of"]

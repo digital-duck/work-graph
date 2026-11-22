@@ -8,38 +8,38 @@ from workgraph import paths
 from workgraph.convert import json_to_yaml, yaml_to_json
 from workgraph.area import Workspace
 from workgraph.pipeline import build_workspace
-from workgraph.schema import validate_layer
+from workgraph.schema import validate_domain
 from workgraph.store import Store
 
 EX = Path(__file__).parent.parent / "examples"
 
 
-def _doc(layer="org", nodes=None, edges=None):
-    return {"schema": "workgraph/1", "layer": layer, "nodes": nodes or [], "edges": edges or []}
+def _doc(domain="org", nodes=None, edges=None):
+    return {"schema": "workgraph/2", "domain": domain, "nodes": nodes or [], "edges": edges or []}
 
 
 def test_schema_accepts_valid_and_rejects_each_rule():
     ok = _doc(nodes=[{"id": "org:a", "kind": "company"}, {"id": "org:a/b", "kind": "team"}],
               edges=[{"source": "org:a/b", "target": "org:a", "relation": "part_of"}])
-    assert validate_layer(ok) == []
+    assert validate_domain(ok) == []
     bad = {
         "wrong prefix": _doc(nodes=[{"id": "product:a", "kind": "company"}]),
         "bad kind": _doc(nodes=[{"id": "org:a", "kind": "planet"}]),
         "duplicate": _doc(nodes=[{"id": "org:a", "kind": "team"}, {"id": "org:a", "kind": "team"}]),
         "bad uid": _doc(nodes=[{"id": "org:a", "kind": "team", "uid": "xyz"}]),
         "unknown relation": _doc(edges=[{"source": "org:a", "target": "org:b", "relation": "likes"}]),
-        "wrong layers": _doc(edges=[{"source": "org:a", "target": "org:b", "relation": "owned_by"}]),
+        "wrong domains": _doc(edges=[{"source": "org:a", "target": "org:b", "relation": "owned_by"}]),
         "cycle": _doc(edges=[{"source": "org:a", "target": "org:b", "relation": "part_of"},
                              {"source": "org:b", "target": "org:a", "relation": "part_of"}]),
-        "bad layer": {**_doc(), "layer": "galaxy"},
+        "bad domain": {**_doc(), "domain": "galaxy"},
     }
     for name, doc in bad.items():
-        assert validate_layer(doc), name
+        assert validate_domain(doc), name
 
 
-def test_example_layers_merge_into_one_graph():
+def test_example_domains_merge_into_one_graph():
     M, _, warnings = build_workspace(Workspace.load(EX / "workspace.yaml"))
-    assert {d["layer"] for _, d in M.nodes(data=True)} == {"repo", "process", "product", "org"}
+    assert {d["domain"] for _, d in M.nodes(data=True)} == {"repo", "process", "product", "org"}
     rels = {(u, d["relation"], v) for u, v, d in M.edges(data=True)}
     assert ("project:acme-shop", "belongs_to", "product:acme/retail/shop/checkout") in rels
     assert ("product:acme/retail/shop", "follows", "process:sdlc") in rels   # pack-derived process node
@@ -127,7 +127,7 @@ def test_comment_added_in_yaml_survives_next_convert_and_orphan_is_kept(tmp_path
     assert "[orphaned from org:acme/engineering/research] to be renamed" in y.read_text()
 
 
-def test_invalid_layer_file_is_reported_not_loaded(tmp_path):
+def test_invalid_domain_file_is_reported_not_loaded(tmp_path):
     ws = _copy_graphs(tmp_path)
     (ws / "graphs" / "org.json").write_text(json.dumps(_doc(nodes=[{"id": "org:a", "kind": "planet"}])))
     _, _, warnings = build_workspace(Workspace.load(ws / "workspace.yaml"))
@@ -135,7 +135,7 @@ def test_invalid_layer_file_is_reported_not_loaded(tmp_path):
     assert any("broken reference org:acme" in w for w in warnings)   # product.json now points at missing org nodes
 
 
-def test_custom_process_layer_file_merges_with_ordered_steps():
+def test_custom_process_domain_file_merges_with_ordered_steps():
     M, _, _ = build_workspace(Workspace.load(EX / "workspace.yaml"))
     rels = {(u, d["relation"], v) for u, v, d in M.edges(data=True)}
     steps = ["interview", "requirements", "design", "prototype", "build", "test", "release", "feedback"]
@@ -144,3 +144,54 @@ def test_custom_process_layer_file_merges_with_ordered_steps():
     assert all((f"process:delivery/{s}", "part_of", "process:delivery") in rels for s in steps)
     assert ("product:acme/retail/shop", "follows", "process:delivery") in rels
     assert ("product:acme/retail/shop", "follows", "process:sdlc") in rels
+
+
+# ---- the 0.3.0 rename: `layer` (org, product, process, repo) became `domain` -----------------------------------------------------------------------------------
+
+def test_a_domain_file_written_by_0_2_reads_as_the_new_form_with_a_note():
+    from workgraph.schema import normalize_legacy, validate_domain
+    doc = {"schema": "workgraph/1", "layer": "org", "nodes": [{"id": "org:a", "kind": "company", "label": "A"}], "edges": []}
+    assert "migrate" in normalize_legacy(doc)[0]
+    assert doc["domain"] == "org" and "layer" not in doc and doc["schema"] == "workgraph/2" and validate_domain(doc) == []
+    assert normalize_legacy(doc) == []                                    # a new file has nothing to say
+
+
+def test_the_loader_accepts_an_old_file_and_warns(tmp_path):
+    import json
+    from workgraph.refs import load_domains
+    (tmp_path / "org.json").write_text(json.dumps({"schema": "workgraph/1", "layer": "org", "nodes": [{"id": "org:a", "kind": "company", "label": "A"}], "edges": []}), encoding="utf-8")
+    docs, notes = load_domains(tmp_path)
+    assert list(docs) == ["org.json"] and docs["org.json"]["domain"] == "org" and any("0.2.x" in n for n in notes)
+
+
+def test_migrate_rewrites_a_domain_file_and_its_yaml_twin_and_drops_the_old_output(tmp_path):
+    import json
+    from workgraph import migrate, paths
+    g = tmp_path / "graphs"
+    g.mkdir()
+    (g / "org.json").write_text(json.dumps({"schema": "workgraph/1", "layer": "org", "nodes": [], "edges": []}, indent=2) + "\n", encoding="utf-8")
+    (g / "org.yaml").write_text("schema: workgraph/1\nlayer: org   # the company\nnodes: []\nedges: []\n", encoding="utf-8")
+    ws = tmp_path / "workspace.yaml"
+    ws.write_text("projects: []\n", encoding="utf-8")
+    (paths.out_dir() / "layers").mkdir(parents=True)
+    assert migrate.migrate([ws], dry=True) and (paths.out_dir() / "layers").exists()            # a dry run writes nothing
+    migrate.migrate([ws])
+    new = json.loads((g / "org.json").read_text(encoding="utf-8"))
+    assert new == {"schema": "workgraph/2", "domain": "org", "nodes": [], "edges": []} and list(new)[:2] == ["schema", "domain"]
+    assert (g / "org.yaml").read_text(encoding="utf-8").startswith("schema: workgraph/2\ndomain: org   # the company")
+    assert not (paths.out_dir() / "layers").exists() and migrate.migrate([ws]) == []
+
+
+def test_a_database_of_0_2_gets_its_layer_columns_renamed(tmp_path):
+    import sqlite3
+    from workgraph.store import Store
+    db = tmp_path / "old.sqlite3"
+    con = sqlite3.connect(db)
+    con.executescript("CREATE TABLE files (path TEXT PRIMARY KEY, layer TEXT, json_sha256 TEXT, yaml_sha256 TEXT, updated_at REAL);"
+                      "CREATE TABLE node_ids (uid TEXT, id TEXT, layer TEXT, last_seen REAL, PRIMARY KEY (uid, id));"
+                      "INSERT INTO node_ids VALUES ('u1', 'org:a', 'org', 1.0);")
+    con.commit()
+    con.close()
+    with Store(db) as s:
+        assert s.dump_node_ids(set()) == [{"uid": "u1", "id": "org:a", "domain": "org"}]
+        assert s.merge_node_ids([{"uid": "u2", "id": "org:b", "layer": "org"}]) == 1           # a sync record of 0.2.x

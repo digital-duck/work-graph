@@ -1,6 +1,6 @@
 {
-  "schema": "workgraph/1",
-  "layer": "process",
+  "schema": "workgraph/2",
+  "domain": "process",
   "nodes": [
     {
       "id": "process:delivery",

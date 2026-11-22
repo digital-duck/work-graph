@@ -32,7 +32,7 @@ def load_graph(path: str | Path | None = None) -> nx.MultiDiGraph:
 def check_format(M: nx.MultiDiGraph, where: str | Path = "the graph") -> nx.MultiDiGraph:
     """Refuse a graph built before the 0.3.0 renames (it has no format mark, and `domain`/`layer` then meant other things): rebuild it."""
     from .migrate import FORMAT
-    if M.graph.get("workgraph_format", 0) < FORMAT and any("domain" in d for _, d in M.nodes(data=True)):
+    if M.graph.get("workgraph_format", 0) < FORMAT and any("layer" in d for _, d in M.nodes(data=True)):
         raise ValueError(f"{where} was built by an older workgraph (before the domain/area/layer rename): run `workgraph build` again")
     return M
 
@@ -46,7 +46,7 @@ class Doc:
     id: str
     label: str
     kind: str
-    layer: str
+    domain: str
     project: str
     stages: list[str]
     source_file: str
@@ -77,7 +77,7 @@ def build_docs(M: nx.MultiDiGraph, roots: dict[str, Path] | None = None, *, incl
                     body = f.read_text(encoding="utf-8", errors="replace")[:EXCERPT_CHARS]
             except OSError:
                 pass
-        docs.append(Doc(n, str(d.get("label", n)), kind, d.get("layer", "repo"), d.get("project", ""),
+        docs.append(Doc(n, str(d.get("label", n)), kind, d.get("domain", "repo"), d.get("project", ""),
                         list(d.get("stages") or []), d.get("source_file") or "", str(d.get("summary") or ""), body))
     return docs
 
@@ -86,8 +86,8 @@ def roots_from_workspace(ws) -> dict[str, Path]:
     return {p.name: p.path for p in ws.projects} if ws else {}
 
 
-def filter_docs(docs: list[Doc], *, layer=None, project=None, kind=None, stage=None) -> list[Doc]:
-    return [d for d in docs if (not layer or d.layer == layer) and (not project or d.project == project)
+def filter_docs(docs: list[Doc], *, domain=None, project=None, kind=None, stage=None) -> list[Doc]:
+    return [d for d in docs if (not domain or d.domain == domain) and (not project or d.project == project)
             and (not kind or d.kind == kind) and (not stage or stage in d.stages)]
 
 
@@ -281,17 +281,17 @@ def semantic_search(docs: list[Doc], query: str, limit: int = 25, backend: str =
 # --- summary and neighbourhood
 
 def summary(M: nx.MultiDiGraph) -> dict:
-    layers: dict[str, int] = {}
+    domains: dict[str, int] = {}
     projects: dict[str, int] = {}
     kinds: dict[str, int] = {}
     for _, d in M.nodes(data=True):
-        layers[d.get("layer", "repo")] = layers.get(d.get("layer", "repo"), 0) + 1
+        domains[d.get("domain", "repo")] = domains.get(d.get("domain", "repo"), 0) + 1
         k = d.get("kind", "")
         if k not in HIDDEN_KINDS and k not in ("stage", "project"):
             kinds[k] = kinds.get(k, 0) + 1
             if d.get("project"):
                 projects[d["project"]] = projects.get(d["project"], 0) + 1
-    return {"nodes": M.number_of_nodes(), "edges": M.number_of_edges(), "layers": layers, "projects": projects, "kinds": kinds}
+    return {"nodes": M.number_of_nodes(), "edges": M.number_of_edges(), "domains": domains, "projects": projects, "kinds": kinds}
 
 
 def gaps_for(M: nx.MultiDiGraph) -> list[dict]:

@@ -33,11 +33,11 @@ All three read the same files in the home folder (`~/workgraph`). For a guided w
 | **Kind** | What an artifact is: `file`, `document`, `requirement`, `decision`, `task`, `symbol`, `external`, ... |
 | **Confidence** | `EXTRACTED` (explicit in the source), `INFERRED` (derived or LLM-suggested), `AMBIGUOUS`. |
 | **Gap** | An artifact missing a link its area pack expects, such as a requirement with no test. |
-| **Layer** | One of several graphs that reference each other: `repo` (built from your projects), `product`, `org` and `process` (written as layer files). Every node has a `layer`. |
-| **Layer file** | A JSON file (with a YAML twin for review) in `<home>/custom/graphs/` that defines a product, org or process layer. See "Layers". |
-| **Home folder** | `~/workgraph` (or `$WORKGRAPH_HOME`): the default workspace, layer files, the built graph, caches and clones. |
+| **Domain** | One of several graphs that reference each other: `repo` (built from your projects), `product`, `org` and `process` (written as domain files). Every node has a `domain`. |
+| **Domain file** | A JSON file (with a YAML twin for review) in `<home>/custom/graphs/` that defines a product, org or process domain. See "Domains". |
+| **Home folder** | `~/workgraph` (or `$WORKGRAPH_HOME`): the default workspace, domain files, the built graph, caches and clones. |
 
-Inside the repo layer, the **process nodes** are the stages and projects (`stage:sdlc:requirement` ...) and the **knowledge nodes** are your artifacts. Analysis runs on the knowledge nodes only. Layers are covered below.
+Inside the repo domain, the **process nodes** are the stages and projects (`stage:sdlc:requirement` ...) and the **knowledge nodes** are your artifacts. Analysis runs on the knowledge nodes only. Domains are covered below.
 
 ## Quick start
 
@@ -63,12 +63,12 @@ workgraph build -c examples/workspace.yaml
   hypothesis   {'rq-demo': 1}
   experiment   {'rq-demo': 2}
   ...
-layers: org 6, process 23, product 3, repo 25
+domains: org 6, process 23, product 3, repo 25
 warning: docs/adr/ADR-002.md: broken reference `satisfies: REQ-099`
 wrote ~/workgraph/out/graph.json
 ```
 
-This is one graph with two areas: `acme-shop` uses the `sdlc` pack, `rq-demo` uses the `research` pack. The table shows how many artifacts each project has in each stage. The `layers:` line shows that the example workspace also loaded the org, product and process layer files that sit next to it in `examples/graphs/`.
+This is one graph with two areas: `acme-shop` uses the `sdlc` pack, `rq-demo` uses the `research` pack. The table shows how many artifacts each project has in each stage. The `domains:` line shows that the example workspace also loaded the org, product and process domain files that sit next to it in `examples/graphs/`.
 
 ### 2. See the gaps
 
@@ -189,25 +189,25 @@ workgraph build                   # builds every tracked project
 
 Claude Code can do the tracking for you (see "Using workgraph as the memory of Claude Code").
 
-## Layers: product, org and process
+## Domains: product, org and process
 
-Besides the repo graph, workgraph holds graphs that describe the work around the code. Each is a **layer file** in `<home>/custom/graphs/` (or in a `graphs/` folder next to the workspace file you pass with `-c`; the bundled `examples/graphs/` has three):
+Besides the repo graph, workgraph holds graphs that describe the work around the code. Each is a **domain file** in `<home>/custom/graphs/` (or in a `graphs/` folder next to the workspace file you pass with `-c`; the bundled `examples/graphs/` has three):
 
-| Layer | Node kinds | Contains |
+| Domain | Node kinds | Contains |
 |---|---|---|
 | `product` | `family`, `product`, `application` | what you ship: family > product > application |
 | `org` | `company`, `division`, `department`, `group`, `team`, `person` | who builds and owns it |
 | `process` | `process`, `step` | a delivery process, such as stakeholder interview, requirement spec, design, prototype, build, test, release, feedback |
 
-Every area pack is also a process template, available as `process:<area>` (for example `process:sdlc`) without a layer file.
+Every area pack is also a process template, available as `process:<area>` (for example `process:sdlc`) without a domain file.
 
-A layer file (shown as YAML; the JSON twin has the same content):
+A domain file (shown as YAML; the JSON twin has the same content):
 
 ```yaml
-schema: workgraph/1
-layer: product
+schema: workgraph/2
+domain: product
 nodes:
-  - id: product:acme/retail/shop            # <layer>:<readable path>
+  - id: product:acme/retail/shop            # <domain>:<readable path>
     uid: b6976f29                           # short, permanent; only used to detect renames
     kind: product
     label: Shop
@@ -223,9 +223,9 @@ edges:
     target: process:sdlc
 ```
 
-Relations between layers: `part_of` (child to parent, inside one layer), `precedes` (process step to the next step), `belongs_to` (repo project to product), `owned_by` (product to org), `follows` (product to process). Nodes are defined once and referenced by id from other files. An id ending in `/**` stands for a node and all its descendants, so `org:acme/engineering/**` as an edge source creates one edge per member.
+Relations between domains: `part_of` (child to parent, inside one domain), `precedes` (process step to the next step), `belongs_to` (repo project to product), `owned_by` (product to org), `follows` (product to process). Nodes are defined once and referenced by id from other files. An id ending in `/**` stands for a node and all its descendants, so `org:acme/engineering/**` as an edge source creates one edge per member.
 
-At build time all layer files are loaded, every reference is resolved, and everything is merged into one graph with a `layer` on each node. Two commands help you author them:
+At build time all domain files are loaded, every reference is resolved, and everything is merged into one graph with a `domain` on each node. Two commands help you author them:
 
 ```bash
 workgraph utils check -c workspace.yaml      # validate the files and every reference
@@ -279,11 +279,11 @@ A reference to something that does not exist (`REQ-099` above) is reported as a 
 | `workgraph build` | build the graph, print a per-stage summary, write `<home>/out/graph.json` |
 | `workgraph gaps` | report artifacts missing links that their pack expects, plus broken references |
 | `workgraph open` | list open work items extracted by the LLM pass (use with `--semantic`) |
-| `workgraph status` | summary of the last build: layers, projects, gaps |
+| `workgraph status` | summary of the last build: domains, projects, gaps |
 | `workgraph search QUERY` | keyword search over the built graph; `--semantic` ranks by meaning (see below) |
 | `workgraph show NODE` | one node's attributes and links (a node id, or a label such as `REQ-002`) |
 | `workgraph ui` | open the Streamlit app to review and query the graph |
-| `workgraph viz [--engine E]` | draw the graph (or a filtered part) as an HTML or SVG file: `cytoscape` (default, offline), `pyvis`, `graphify`, `graphviz`; `--layer/--project/--kind/--stage`, `--node X --hops N`, `--max-nodes`, `--all`, `--list-engines` |
+| `workgraph viz [--engine E]` | draw the graph (or a filtered part) as an HTML or SVG file: `cytoscape` (default, offline), `pyvis`, `graphify`, `graphviz`; `--domain/--project/--kind/--stage`, `--node X --hops N`, `--max-nodes`, `--all`, `--list-engines` |
 | `workgraph import-claude` | backfill from Claude Code: track the projects it has worked in and load its session metadata (dry run unless `--apply`) |
 | `workgraph dump -o FILE` | pack your authored graph data into a tar.gz (a USB stick), without the database |
 | `workgraph load FILE` | merge such a tar.gz into this machine |
@@ -294,8 +294,8 @@ A reference to something that does not exist (`REQ-099` above) is reported as a 
 
 | Subcommand | Purpose |
 |---|---|
-| `check` | validate the layer files (`custom/graphs/`) and every cross-graph reference |
-| `convert FILE` | convert a layer file JSON <-> YAML; YAML comments are saved in and restored from the database |
+| `check` | validate the domain files (`custom/graphs/`) and every cross-graph reference |
+| `convert FILE` | convert a domain file JSON <-> YAML; YAML comments are saved in and restored from the database |
 | `claude-setup` | show, or with `--write` install, the Claude Code hooks and the `/workgraph` command (see below) |
 | `clones` | list files shared across projects (`=` identical, `~` same path but different) |
 | `context [PATH]` | what the graph knows about the project at PATH (what Claude Code gets at session start) |
@@ -328,11 +328,11 @@ Building 3 projects ...
 [2/3] ...
 ```
 
-One line when a project starts and one when it finishes, with its node count and time, and a breakdown of the steps that took half a second or more. Slow shared steps (assembling the graph, clustering, merging layer files) get their own line when they take more than half a second, and on a terminal a "... " marker shows while they run. With `--semantic` the LLM step says how many documents it will read and prints `LLM 2/4: <file>` before each call that is not already cached. `build` ends with a **timing table**, largest first, on stdout. Add `-q` to silence it all.
+One line when a project starts and one when it finishes, with its node count and time, and a breakdown of the steps that took half a second or more. Slow shared steps (assembling the graph, clustering, merging domain files) get their own line when they take more than half a second, and on a terminal a "... " marker shows while they run. With `--semantic` the LLM step says how many documents it will read and prints `LLM 2/4: <file>` before each call that is not already cached. `build` ends with a **timing table**, largest first, on stdout. Add `-q` to silence it all.
 
 ### The home folder
 
-Data lives in `~/workgraph` (set `WORKGRAPH_HOME` to move it): the default `workspace.yaml`, `custom/` (everything you author yourself: your layer files in `custom/graphs/`), `workgraph.sqlite3` (comments, uid history, session journal), `out/graph.json`, `cache/`, `src/` (clones for `--src` URLs) and `sync/` (see "Moving to another machine"). `workgraph init` creates it. Because workgraph is installed as a package, nothing is written next to the code or into your projects. See SETUP.md, section 7.
+Data lives in `~/workgraph` (set `WORKGRAPH_HOME` to move it): the default `workspace.yaml`, `custom/` (everything you author yourself: your domain files in `custom/graphs/`), `workgraph.sqlite3` (comments, uid history, session journal), `out/graph.json`, `cache/`, `src/` (clones for `--src` URLs) and `sync/` (see "Moving to another machine"). `workgraph init` creates it. Because workgraph is installed as a package, nothing is written next to the code or into your projects. See SETUP.md, section 7.
 
 ### Searching and reviewing the graph
 
@@ -340,7 +340,7 @@ Data lives in `~/workgraph` (set `WORKGRAPH_HOME` to move it): the default `work
 workgraph search "checkout test"                         # keyword: names, paths, summaries, file excerpts
 workgraph search '"discount codes"'                      # quoted words must appear together
 workgraph search "customers paying for an order" --semantic
-workgraph search auth --layer repo --kind requirement    # filters: --layer --project --kind
+workgraph search auth --domain repo --kind requirement    # filters: --domain --project --kind
 workgraph show REQ-002
 workgraph ui                                             # the same, in a browser
 ```
@@ -353,9 +353,9 @@ Keyword search ranks matches in a node's name above matches in its path, summary
 | `sbert` | nothing extra: sentence-transformers is installed with workgraph | sentence-transformers, `all-MiniLM-L6-v2` (downloaded once from Hugging Face). Runs on the CPU by default; set `WORKGRAPH_EMBED_DEVICE=cuda` to use a GPU |
 | `tfidf` | nothing | **lexical** (shared words), not meaning; used as the fallback, and the output says so |
 
-To see the graph as a picture, `workgraph viz` writes an interactive page (default engine `cytoscape`, works offline) of a readable subset: no code symbols, no stage/project hub edges, the 400 best-connected nodes. Narrow it with `--layer product`, `--project NAME` or `--node "Checkout" --hops 2`; choose another engine with `--engine pyvis|graphify|graphviz` (`pyvis` needs `pip install 'workgraph[viz]'`). Details: docs/DEV/README-vis.md.
+To see the graph as a picture, `workgraph viz` writes an interactive page (default engine `cytoscape`, works offline) of a readable subset: no code symbols, no stage/project hub edges, the 400 best-connected nodes. Narrow it with `--domain product`, `--project NAME` or `--node "Checkout" --hops 2`; choose another engine with `--engine pyvis|graphify|graphviz` (`pyvis` needs `pip install 'workgraph[viz]'`). Details: docs/DEV/README-vis.md.
 
-`workgraph ui` is part of the normal install. It has an Overview (counts per layer, project and kind), Search (keyword or semantic, with the backend shown), Browse, Gaps and Map tabs. Map draws the graph (the same page as `workgraph viz`) using the sidebar filters; select a node first to draw only its neighbourhood. Click a row to see a node's attributes, its links in and out, and a diagram of its neighbourhood. Sidebar filters (layer, project, kind, stage) apply everywhere, and *Reload* picks up a new build.
+`workgraph ui` is part of the normal install. It has an Overview (counts per domain, project and kind), Search (keyword or semantic, with the backend shown), Browse, Gaps and Map tabs. Map draws the graph (the same page as `workgraph viz`) using the sidebar filters; select a node first to draw only its neighbourhood. Click a row to see a node's attributes, its links in and out, and a diagram of its neighbourhood. Sidebar filters (domain, project, kind, stage) apply everywhere, and *Reload* picks up a new build.
 
 ### Using workgraph as the memory of Claude Code
 
@@ -413,11 +413,11 @@ workgraph sync pull --clone-missing                          # pull, merge, clon
 workgraph sync status
 ```
 
-What travels is the part that cannot be rebuilt, as text: the portable workspace (project names and repository URLs, not local folders), the layer files, and your YAML comments and uid history. What never travels: the database, the built graph, caches and project clones. The **org layer** (it names people), the **session journal** (it lists file names) and the **LLM cache** are opt-in: `--with org,sessions,llm-cache` on `export` or `sync init`.
+What travels is the part that cannot be rebuilt, as text: the portable workspace (project names and repository URLs, not local folders), the domain files, and your YAML comments and uid history. What never travels: the database, the built graph, caches and project clones. The **org domain** (it names people), the **session journal** (it lists file names) and the **LLM cache** are opt-in: `--with org,sessions,llm-cache` on `export` or `sync init`.
 
 After an import or pull, a project may have no folder on this machine. `workgraph track <folder>` binds it, or `sync pull --clone-missing` clones it into `~/workgraph/src`. Then run `workgraph build` to regenerate the graph.
 
-Safety rules the tool applies for you: the database lives outside every synced folder; the repository's `.gitignore` allows only the files workgraph writes; every export and push is scanned and stops on a database file, a file over 5 MB or something that looks like an API key or private key; an archive is unpacked only if it contains plain files under one folder. If a layer file changed on both machines, yours is kept and the other is saved beside it as `<name>.incoming.<ext>` to merge by hand. A comment you deleted on one machine can come back from the other.
+Safety rules the tool applies for you: the database lives outside every synced folder; the repository's `.gitignore` allows only the files workgraph writes; every export and push is scanned and stops on a database file, a file over 5 MB or something that looks like an API key or private key; an archive is unpacked only if it contains plain files under one folder. If a domain file changed on both machines, yours is kept and the other is saved beside it as `<name>.incoming.<ext>` to merge by hand. A comment you deleted on one machine can come back from the other.
 
 ### Choosing the adapter
 
@@ -524,7 +524,7 @@ The same engine works for other areas by switching the pack: `research` (questio
 | `sync init` says it cannot verify the repository is private | It checks GitHub through the `gh` CLI. Install and log in to `gh`, or confirm yourself with `--confirm-private` after checking. A public repository is always refused. |
 | `sync` or `dump` stops with "refusing to export" | The scan found a database, a large file or something shaped like a key. Remove it from the listed file; nothing was written to the repository. |
 | After a pull, `unresolved: <project>` | That project has no folder here. `workgraph track <folder>` or `workgraph sync pull --clone-missing`. |
-| A `.incoming.json` file appeared in `custom/graphs/` | The layer file changed on both machines. Merge the two by hand, delete the `.incoming` copy, run `workgraph utils check`. |
+| A `.incoming.json` file appeared in `custom/graphs/` | The domain file changed on both machines. Merge the two by hand, delete the `.incoming` copy, run `workgraph utils check`. |
 | `/workgraph` is not found in Claude Code | Plugin installs give `/workgraph:workgraph`. For the plain name run `workgraph utils claude-setup --write`. |
 | `claude -p` fails with a model error | `ANTHROPIC_MODEL` points at a retired model. Unset it or set a current one. workgraph's own LLM calls use `WORKGRAPH_CC_MODEL`, not that variable. |
 | The graph looks stale after working in Claude Code | The session-end rebuild runs in the background; see `<home>/out/build.log`, or run `workgraph build`. |

@@ -21,7 +21,7 @@ EX = Path(__file__).parent.parent / "examples"
 
 
 def _make_home(home: Path, monkeypatch, with_org=True):
-    """A populated home: layer files, a tracked project, a YAML comment, a session."""
+    """A populated home: domain files, a tracked project, a YAML comment, a session."""
     monkeypatch.setenv("WORKGRAPH_HOME", str(home))
     init_home()
     for f in (EX / "graphs").glob("*"):

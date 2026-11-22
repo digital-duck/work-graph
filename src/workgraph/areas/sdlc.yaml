@@ -46,7 +46,7 @@ classifiers:
 # Generated / run-time noise that is not part of the development knowledge (gitignore syntax).
 ignore: ["**/docs/research/**", "**/docs/archive/**", "**/docs/outreach/**", "**/docs/images/**", "**/logs/**", "**/logs-*/**", "**/*.log", "**/*.pyc", "**/*.db", "**/*.lock", "**/package-lock.json"]
 
-# Processing layer: which artifact types go through which processor.
+# Processing domain: which artifact types go through which processor.
 #   ast         graphify tree-sitter extraction (code)
 #   frontmatter markdown files; YAML frontmatter -> typed nodes + explicit edges
 #   annotations `# relation: ID` comments in code files -> explicit edges
