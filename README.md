@@ -43,7 +43,9 @@ This is the same graph-first approach as ConceptBook (a book as a graph) and Gra
 
 ### Search and review
 
-`workgraph search "checkout test"` is a keyword search (names, paths, summaries and the first lines of each file, with phrase and prefix matching). `workgraph search "how are carts stored?" --semantic` ranks by meaning with embeddings from a local Ollama model (default `nomic-embed-text`) or sentence-transformers, and says plainly when it had to fall back to lexical TF-IDF. `workgraph show REQ-002` prints one node and its links. `workgraph ui` opens a Streamlit app to browse, filter, search, inspect gaps, see a node's neighbourhood and draw the graph (Map tab). `workgraph viz` draws the graph as an interactive page (`--engine cytoscape|pyvis|graphify|graphviz`).
+`workgraph search "checkout test"` is a keyword search (names, paths, summaries and the first lines of each file, with phrase and prefix matching).
+
+`workgraph ask "Which design decision and which test cover REQ-001?"` answers a question in words. A model picks search words, a program collects the matching nodes and their neighbours, the model answers and must cite node ids in square brackets, and a program checks that every cited id is one of the facts it was given. The report says **grounded** (cites real nodes, listed) or **ungrounded** (the answer is shown, marked, and not to be relied on), and when nothing in the graph matches there is no model answer at all. It is the GraphLang recipe `src/workgraph/recipes/ask/`, costs at most 3 model calls (`--max-calls` caps it, default 4), and exits non-zero unless the answer is grounded. `workgraph search "how are carts stored?" --semantic` ranks by meaning with embeddings from a local Ollama model (default `nomic-embed-text`) or sentence-transformers, and says plainly when it had to fall back to lexical TF-IDF. `workgraph show REQ-002` prints one node and its links. `workgraph ui` opens a Streamlit app to browse, filter, search, inspect gaps, see a node's neighbourhood and draw the graph (Map tab). `workgraph viz` draws the graph as an interactive page (`--engine cytoscape|pyvis|graphify|graphviz`).
 
 ### Memory for Claude Code
 

@@ -7,6 +7,7 @@ folder of that name in `<home>/custom/recipes/`; the custom one wins. Every mode
 from __future__ import annotations
 
 import copy
+import sys
 from pathlib import Path
 
 from .. import llm, paths
@@ -45,6 +46,10 @@ class Recipe:
         from graphlang.grafr.runtime import load_graph
         self.name, self.path = name, recipe_path(name)
         self._graph = load_graph(self.path)
+        for node in self._graph.get("nodes", []):     # a recipe's program runs in THIS Python, so it can import workgraph
+            cmd = node.get("config", {}).get("command")
+            if isinstance(cmd, list) and cmd and cmd[0] == "python3":
+                cmd[0] = sys.executable
         self.fingerprint = _fingerprint(self.path.parent, prompt_path(prompt) if prompt else None)
         if prompt:       # a processor's own prompt file replaces the recipe's first prompt (by name in its `resources.prompts`)
             found = prompt_path(prompt)

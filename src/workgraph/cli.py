@@ -390,6 +390,27 @@ def cmd_search(args) -> None:
         print(f"         id: {d.id}")
 
 
+def cmd_ask(args) -> None:
+    """Answer a question from the built graph: the answer cites node ids and a program checks that they exist."""
+    from . import recipes
+    from .llm import BackendLimitError
+    graph = Path(args.graph) if args.graph else paths.out_dir() / "graph.json"
+    query.load_graph(graph)                                         # fail early, with the "run workgraph build" message
+    backend = resolve_backend(args.adapter)
+    try:
+        out = recipes.Recipe(args.recipe or "ask").run(
+            {"question": args.question, "graph": str(graph), "semantic": "yes" if args.semantic else "no"},
+            backend=backend, max_llm_calls=args.max_calls)
+    except BackendLimitError as e:
+        raise SystemExit(f"workgraph: {e}; try again later")
+    except RuntimeError as e:
+        raise SystemExit(f"workgraph: the question was not answered: {e}")
+    print(out["report"])
+    print(f"\n[{out['status']}]")
+    if out["status"] != "grounded":
+        raise SystemExit(1)
+
+
 def cmd_show(args) -> None:
     M = query.load_graph(args.graph)
     node = args.node
@@ -607,6 +628,15 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("--write", action="store_true", help="merge the hooks into the user-level Claude Code settings")
     s.add_argument("--settings", default="~/.claude/settings.json")
     s.set_defaults(fn=cmd_claude_setup)
+    s = sub.add_parser("ask", help="answer a question from the built graph, with citations that are checked (a few model calls)")
+    s.add_argument("question")
+    s.add_argument("--graph", help="graph file (default: <home>/out/graph.json)")
+    s.add_argument("--semantic", action="store_true", help="also search by meaning (embeddings, else TF-IDF)")
+    s.add_argument("--adapter", help="LLM backend, e.g. cc_cli (subscription) or bedrock; overrides config")
+    s.add_argument("--recipe", help="a recipe of your own with the same inputs and outputs as `ask` (a folder in <home>/custom/recipes/)")
+    s.add_argument("--max-calls", type=int, default=4, help="the most model calls for this question (default 4; a full run uses 3)")
+    s.set_defaults(fn=cmd_ask)
+
     s = sub.add_parser("search", help="keyword (default) or --semantic search over the built graph")
     s.add_argument("query")
     s.add_argument("--semantic", action="store_true", help="rank by meaning: ollama or sentence-transformers embeddings, else TF-IDF")

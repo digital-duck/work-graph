@@ -1,0 +1,73 @@
+# ask: a question about the built graph -> search words (model) -> the matching nodes and their neighbours (program) -> an answer that cites node ids
+# (model) -> a check that every cited id is one of the facts given (program) -> a report that says GROUNDED or UNGROUNDED. A model that cites nothing real
+# gets one second try; after that the report says so instead of passing the answer off as the graph's. No match: no model answer at all.
+version: "1.0-graph"
+workflow:
+  name: ask
+  description: Answers a question from the built workgraph graph, with citations a program has checked. At most 3 model calls (search words, answer, one repair).
+  inputs:
+    - {name: question, type: TEXT}
+    - {name: graph, type: TEXT, default: "", description: path to graph.json; empty means the one in the home folder}
+    - {name: semantic, type: TEXT, default: "no", description: "yes: also search by meaning (embeddings, else TF-IDF)"}
+  outputs:
+    - {name: report, type: TEXT}
+    - {name: status, type: TEXT, description: grounded, ungrounded or empty}
+resources:
+  prompts:
+    keywords: ./prompts/keywords.md
+    answer: ./prompts/answer.md
+    repair: ./prompts/repair.md
+steps:
+  - keywords: {generate: prompts.keywords, in: {question: $in.question}, out: reply, label: Search words}
+  - context:
+      node: SOLVE
+      in: {mode: {value: context}, question: $in.question, keywords: keywords.reply, graph: $in.graph, semantic: $in.semantic}
+      ports: [trigger, complete, in_mode, in_question, in_keywords, in_graph, in_semantic, out_result]
+      out: result
+      backend: subprocess
+      command: ["python3", "-I", "tools/ask_tool.py"]
+      out_type: JSON
+      timeout: 60
+      label: Find the facts in the graph
+  - found: {evaluate: "json_get(@in_r, 'ok') == TRUE", in: {r: context.result}}
+  - facts: {solve: "json_get(@in_r, 'text')", on: found.pass, in: {r: context.result}, out: text}
+  - answer: {generate: prompts.answer, in: {question: $in.question, facts: facts.text}, out: reply, label: Answer from the facts}
+  - check:
+      node: SOLVE
+      in: {mode: {value: verify}, answer: answer.reply, context: context.result}
+      ports: [trigger, complete, in_mode, in_answer, in_context, out_result]
+      out: result
+      backend: subprocess
+      command: ["python3", "-I", "tools/ask_tool.py"]
+      out_type: JSON
+      timeout: 30
+      label: Do the cited ids exist in the facts?
+  - cited: {evaluate: "json_get(@in_r, 'ok') == TRUE", in: {r: check.result}}
+  - problem: {solve: "json_get(@in_r, 'error')", on: cited.fail, in: {r: check.result}, out: text}
+  - repair: {generate: prompts.repair, in: {question: $in.question, facts: facts.text, answer: answer.reply, problem: problem.text}, out: reply, label: Answer again with real citations}
+  - check_again:
+      node: SOLVE
+      in: {mode: {value: verify}, answer: repair.reply, context: context.result}
+      ports: [trigger, complete, in_mode, in_answer, in_context, out_result]
+      out: result
+      backend: subprocess
+      command: ["python3", "-I", "tools/ask_tool.py"]
+      out_type: JSON
+      timeout: 30
+      label: Check the second answer
+  - last_answer: {solve: "@in_a", on: [cited.pass, check_again], in: {a: [answer.reply, repair.reply]}, out: text}
+  - last_verdict: {solve: "@in_v", on: [cited.pass, check_again], in: {v: [check.result, check_again.result]}, out: result}
+  - final:
+      node: SOLVE
+      on: [last_verdict, found.fail]
+      in: {mode: {value: report}, answer: last_answer.text, context: context.result, verdict: last_verdict.result}
+      ports: [trigger, complete, in_mode, in_answer, in_context, in_verdict, out_result]
+      out: result
+      backend: subprocess
+      command: ["python3", "-I", "tools/ask_tool.py"]
+      out_type: JSON
+      timeout: 30
+      label: Write the report
+  - text: {solve: "json_get(@in_r, 'text')", in: {r: final.result}, out: text}
+  - status: {solve: "json_get(@in_r, 'status')", in: {r: final.result}, out: text}
+  - done: {output: {report: text.text, status: status.text}}

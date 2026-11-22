@@ -1,7 +1,7 @@
 # Refactoring work-graph with GraphLang (plan)
 
 Date: 2026-11-22
-Status: plan, decisions recorded in section 8. **Phases 0b (the rename), 1 (the LLM seam) and 2 (`llm_items` as a recipe) are done** (2026-11-22, commits `1e15f42` and `0ed9099`); the other phases are not started. Nothing here is done. Written after reading the work-graph tree (`CLAUDE.md`, `README.md`, `pipeline.py`, `processors.py`,
+Status: plan, decisions recorded in section 8. **Phases 0b (the rename), 1 (the LLM seam) and 2 (`llm_items` as a recipe) and 3 (`workgraph ask`) are done** (2026-11-22, commits `1e15f42` and `0ed9099`); the other phases are not started. Nothing here is done. Written after reading the work-graph tree (`CLAUDE.md`, `README.md`, `pipeline.py`, `processors.py`,
 `llm.py`, `cc_cli.py`, `query.py`, `pyproject.toml`) and the parts of GraphLang and dd-llm it would touch. What was read and what was not is
 marked; "verify" means a step the plan depends on but nobody has checked yet.
 
@@ -108,12 +108,20 @@ What needs a migration, because work-graph 0.2.0 is on PyPI and people have home
 - **Checked:** the recipe's prompt is byte-identical to the old `_ITEMS_PROMPT` output; scripted replies (chatter and a fence around the JSON, an unknown kind, an unknown stage, a non-mapping item, no JSON at all, a limit) give the same nodes on both paths; the cache serves a rerun; a custom recipe and a custom prompt win. A real haiku run on `acme-shop` through each path gave 37 nodes and 6 items each (the wording of items differs between two model calls, as it always does). 110 tests pass.
 - **Left:** `WORKGRAPH_LLM_ITEMS=python` and `_ITEMS_PROMPT` stay until you say the output is proven (remove them in one small commit). The cache key changed, so the first `--semantic` build after the upgrade re-extracts once. `rq-demo` was not run for real (its only LLM processor is `llm` on PDFs, not `llm_items`).
 
-### Phase 3: `workgraph ask`
+### Phase 3: `workgraph ask` (DONE 2026-11-22)
 
 - A recipe `src/workgraph/recipes/ask/`: `understand` (the question, as keywords and as a sentence), `seed` (a program calling `query.keyword_search` and, when available, `semantic_search`), `expand` (a program: the neighbours and the paths between the seeds, as text with node ids), `answer` (the model, told to cite node ids), `verify` (a program: every cited id is in the subgraph; error exit `uncited`), and a fallback that says what the graph does not contain instead of answering from memory.
 - The report states whether the answer is **grounded** (cites nodes, all found) or **ungrounded** (a model answer with no graph support), as `problem_solver` marks `UNVERIFIED`. Never present an ungrounded answer as grounded.
 - CLI: `workgraph ask "..."` with a call cap by default (a small one); the UI gets an Ask tab later.
 - Acceptance: the questions in `docs/GUIDE/TUTORIAL.md` ("what you can ask") answered with citations on `examples/acme-shop`, offline with a scripted model, and once with a real one (capped).
+
+**Result of Phase 3:**
+
+- `recipes/ask/` (graph, `prompts/{keywords,answer,repair}.md`, `tools/ask_tool.py` with modes `context`, `verify`, `report`) and `workgraph ask QUESTION [--graph] [--semantic] [--adapter] [--recipe] [--max-calls N]` (default cap 4; a full run is 3 calls: search words, answer, one repair). Exits 1 unless grounded.
+- **Design change from the plan:** `seed` and `expand` are one program step (`context`), and there is no separate model-free `fallback` node: when nothing matches, the report is written by the program (`empty`) and **no model answer is given**, which is stricter than the plan's "say what the graph lacks". `uncited` is not an error exit: a failed second check ends in a report marked **UNGROUNDED** that shows the answer and says not to rely on it, so the user still sees it. The model never decides the status; the program does.
+- `Recipe` now replaces a recipe's `python3` command with `sys.executable`, so a recipe's program can import workgraph (and the extract_items parser runs in the same Python).
+- **Checked:** 8 scripted tests (grounded first time; repair; an invented id stays UNGROUNDED; no match = 1 call and no answer; the call cap; the command's output and exit code; a missing graph says to build first). Real haiku, 3-call cap, on `examples/`: "Which design decision and which test cover REQ-001?" -> ADR-001 and test_cart.py, grounded; "Who owns the shop product and which processes does it follow?" -> the Payments team, `process:delivery` and `process:sdlc`, grounded; both match the tutorial's section 6. 118 tests pass.
+- **Not done:** the UI Ask tab (the plan said later); gap questions ("which requirements have no test?") are not answered from the gap rules, only from what the matched nodes and their edges show.
 
 ### Phase 4: GraphLang files as knowledge-graph artifacts (opt-in per domain pack, see section 8, question 4)
 

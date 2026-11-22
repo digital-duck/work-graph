@@ -280,6 +280,7 @@ A reference to something that does not exist (`REQ-099` above) is reported as a 
 | `workgraph gaps` | report artifacts missing links that their pack expects, plus broken references |
 | `workgraph open` | list open work items extracted by the LLM pass (use with `--semantic`) |
 | `workgraph status` | summary of the last build: domains, projects, gaps |
+| `workgraph ask QUESTION` | an answer from the graph with node ids cited and checked (`grounded` / `ungrounded` / `empty`); at most 3 model calls, `--max-calls` caps it, `--semantic` also searches by meaning, `--adapter` picks the backend |
 | `workgraph search QUERY` | keyword search over the built graph; `--semantic` ranks by meaning (see below) |
 | `workgraph show NODE` | one node's attributes and links (a node id, or a label such as `REQ-002`) |
 | `workgraph ui` | open the Streamlit app to review and query the graph |
