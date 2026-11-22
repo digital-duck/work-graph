@@ -21,9 +21,9 @@ from graphify.extract import collect_files, extract
 from . import paths
 from .progress import current
 from .area import Processor, Project, glob_match, make_id
-from .cc_cli import BackendLimitError
 from .claude_import import p_claude_memory
-from .llm import complete, resolve_backend
+from . import llm
+from .llm import BackendLimitError, resolve_backend
 
 
 def _inside(root: Path, f: Path) -> bool:
@@ -154,29 +154,24 @@ def p_annotations(project: Project, files: list[Path], proc: Processor) -> dict:
 
 
 def p_llm(project: Project, files: list[Path], proc: Processor) -> dict:
-    """graphify semantic extraction through the chosen backend (Claude, Gemini, Ollama, ...)."""
-    from graphify.llm import extract_files_direct
+    """graphify's semantic extraction prompt, five files per call, through the one LLM seam (`llm.complete`: any dd-llm backend)."""
+    from graphify import llm as g
     if not files:
         return _empty()
     backend = resolve_backend(None, project.backend, proc.backend)
-    if backend == "cc_cli":   # graphify's extractor, but the call goes through the subscription-safe adapter
-        from graphify import llm as g
-        out = _empty()
-        for i in range(0, len(files), 5):
-            prompt = g._EXTRACTION_SYSTEM + "\n\n" + g._read_files(files[i:i + 5], project.path)
-            try:
-                part = g._parse_llm_json(complete(prompt, backend=backend))
-            except BackendLimitError as e:
-                out["warnings"].append(f"{e}; skipping remaining files")
-                break
-            except RuntimeError as e:
-                out["warnings"].append(f"LLM extraction failed ({e}); batch skipped")
-                continue
-            for k in ("nodes", "edges", "hyperedges"):
-                out[k].extend(part.get(k, []))
-        return out
-    out = extract_files_direct(files, backend=backend, root=project.path)
-    out.setdefault("refs", [])
+    out = _empty()
+    for i in range(0, len(files), 5):
+        prompt = g._EXTRACTION_SYSTEM + "\n\n" + g._read_files(files[i:i + 5], project.path)
+        try:
+            part = g._parse_llm_json(llm.complete(prompt, backend=backend))
+        except BackendLimitError as e:
+            out["warnings"].append(f"{e}; skipping remaining files")
+            break
+        except RuntimeError as e:
+            out["warnings"].append(f"LLM extraction failed ({e}); batch skipped")
+            continue
+        for k in ("nodes", "edges", "hyperedges"):
+            out[k].extend(part.get(k, []))
     return out
 
 
@@ -242,7 +237,7 @@ def p_llm_items(project: Project, files: list[Path], proc: Processor) -> dict:
         else:
             current().note(f"LLM {n}/{len(files)}: {rel}")
             try:
-                items = _json_object(complete(prompt, backend=backend, max_tokens=4096)).get("items", [])
+                items = _json_object(llm.complete(prompt, backend=backend, max_tokens=4096)).get("items", [])
             except BackendLimitError as e:
                 out["warnings"].append(f"{rel}: {e}; skipping remaining LLM documents (rerun later, results are cached)")
                 break

@@ -214,15 +214,15 @@ python -m pytest
 
 ## LLM backends (home vs work)
 
-All LLM calls go through one adapter, `src/workgraph/llm.py`. The backend is chosen in this order: explicit argument, then the `WORKGRAPH_BACKEND` environment variable, then the project's `backend:` in `workspace.yaml`, then the processor's `backend:` in the area pack, then the default `cc_cli`.
+All LLM calls go through one seam, `src/workgraph/llm.py`, which asks a [dd-llm](https://github.com/digital-duck/dd-llm) adapter. The backend is chosen in this order: explicit argument, then the `WORKGRAPH_BACKEND` environment variable, then the project's `backend:` in `workspace.yaml`, then the processor's `backend:` in the area pack, then the default `cc_cli`.
 
 | Backend | Billing | Notes |
 |---|---|---|
-| `cc_cli` (default) | **Claude Code subscription** | Our own, ported from SPL.py's adapter. Strips `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_CODE_USE_BEDROCK/VERTEX/FOUNDRY` and the nested-session guards from the environment, so `claude` always uses your stored login. Prompt via stdin, tools off, launch retries, distinct rate-limit error. |
-| `claude-cli` | whatever `claude` picks up | graphify's built-in. Passes the environment through, so with `ANTHROPIC_API_KEY` set it **bills the API per token**. Prefer `cc_cli`. |
-| `claude`, `gemini`, `openai`, `kimi` | API, per token | graphify's, need API keys |
-| `bedrock` | your AWS account | graphify's |
-| `ollama` | local | graphify's |
+| `cc_cli` (default) | **Claude Code subscription** | dd-llm's `claude_cli` adapter (shared with GraphLang and SPL.py). Strips `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_CODE_USE_BEDROCK/VERTEX/FOUNDRY` and the nested-session guards from the environment, so `claude` always uses your stored login. Prompt via stdin, tools off, launch retries, distinct rate-limit error. |
+| `claude-cli` | **Claude Code subscription** | graphify's old name for the same CLI; it now means `cc_cli` (the adapter strips the billing variables). |
+| `claude` | API, per token | dd-llm `anthropic`; needs `ANTHROPIC_API_KEY` |
+| `bedrock` | your AWS account | dd-llm `bedrock` |
+| `gemini`, `openai`, `ollama`, `deepseek`, ... | API per token, or local (`ollama`) | any dd-llm adapter name works (`python -c "import dd_llm; print(dd_llm.list_adapters())"`) |
 
 ```bash
 # home: subscription, nothing to set
@@ -231,12 +231,12 @@ workgraph build --semantic -c workspace.yaml
 # work: AWS Bedrock, same workspace file, no YAML edits
 python -m pip install -e ".[bedrock]"
 export WORKGRAPH_BACKEND=bedrock AWS_PROFILE=<profile> AWS_REGION=<region>
-export GRAPHIFY_BEDROCK_MODEL=<model-or-inference-profile-id>   # graphify's built-in default is an old model
+export WORKGRAPH_MODEL=<model-or-inference-profile-id>
 workgraph utils show-llm -c workspace.yaml          # resolved backend, billing mode and readiness checks per processor
 workgraph build --semantic -c workspace.yaml
 ```
 
-`cc_cli` model and timeout: `WORKGRAPH_CC_MODEL` (default `claude-sonnet-5`) and `WORKGRAPH_CC_TIMEOUT` (default 1200 s). LLM results are cached by backend and prompt, so switching backends re-extracts once. A session or rate limit stops the LLM pass with a warning instead of failing the build; rerun later and the cached documents are skipped.
+Model and timeout: `WORKGRAPH_MODEL` (any backend; `WORKGRAPH_CC_MODEL` for `cc_cli` and `GRAPHIFY_BEDROCK_MODEL` for `bedrock` still work; empty = the adapter's default) and `WORKGRAPH_CC_TIMEOUT` (default 1200 s). LLM results are cached by backend and prompt, so switching backends re-extracts once. A session or rate limit stops the LLM pass with a warning instead of failing the build; rerun later and the cached documents are skipped.
 
 ## Layout
 
@@ -244,8 +244,7 @@ workgraph build --semantic -c workspace.yaml
 src/workgraph/
   areas/*.yaml   # area packs: sdlc, research, publishing
   area.py        # Area / Workspace loading, stage-tag validation, path classifiers
-  llm.py           # LLM adapter: backend resolution + billing labels (cc_cli at home, bedrock at work)
-  cc_cli.py        # subscription-only Claude Code backend (ported from SPL.py)
+  llm.py           # the LLM seam: backend resolution, billing labels, one `complete()` over dd-llm adapters (cc_cli at home, bedrock at work)
   processors.py    # processing domain: ast, frontmatter, annotations, llm, llm_items
   links.py         # cross-project identical_to / variant_of edges
   pipeline.py      # tag + link + derive flow edges + cluster (wraps graphify)

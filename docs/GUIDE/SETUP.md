@@ -147,11 +147,11 @@ If the login line says `not a subscription login`, run `claude` and use `/login`
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `WORKGRAPH_CC_MODEL` | `claude-sonnet-5-5` | model passed to `claude --model`. workgraph does not read `ANTHROPIC_MODEL` |
+| `WORKGRAPH_MODEL` | (unset) | model for any backend; unset = the adapter's default. `WORKGRAPH_CC_MODEL` (for `cc_cli`) and `GRAPHIFY_BEDROCK_MODEL` (for `bedrock`) still work. workgraph does not read `ANTHROPIC_MODEL` |
 | `WORKGRAPH_CC_TIMEOUT` | `1200` | seconds before a call is abandoned |
 | `WORKGRAPH_BACKEND` | (unset) | force a backend for all commands, same as `--adapter` |
 
-**Do not confuse `cc_cli` with `claude-cli`.** `claude-cli` is graphify's built-in backend and passes your whole environment through, so if `ANTHROPIC_API_KEY` is set it bills the API per token. `workgraph utils show-llm` flags that case. Use `cc_cli`.
+`claude-cli` (graphify's old name) is the same backend as `cc_cli`: both run the Claude Code CLI on your subscription with the billing variables stripped from the call.
 
 ## 6. LLM backend: `bedrock` (AWS)
 
@@ -161,10 +161,10 @@ python -m pip install -e ".[bedrock]"
 export WORKGRAPH_BACKEND=bedrock          # or pass --adapter bedrock to each command
 export AWS_PROFILE=<your-profile>          # or key env vars / SSO session
 export AWS_REGION=<region>
-export GRAPHIFY_BEDROCK_MODEL=<model-or-inference-profile-id>
+export WORKGRAPH_MODEL=<model-or-inference-profile-id>
 ```
 
-Set `GRAPHIFY_BEDROCK_MODEL` explicitly. Graphify's built-in default is an old model (`anthropic.claude-3-5-sonnet-20241022-v2:0`) that may not be enabled in your account. If you use SSO, run `aws sso login --profile <your-profile>` first.
+Set `WORKGRAPH_MODEL` explicitly: the adapter's default model may not be enabled in your account. If you use SSO, run `aws sso login --profile <your-profile>` first.
 
 Verify:
 
@@ -174,7 +174,7 @@ workgraph utils show-llm -c workspace.yaml
 
 Every line should show `[ok]`. The region and model lines show `[!!]` when you rely on defaults; that is informational. Document text is sent to Bedrock in your own AWS account.
 
-Other graphify backends (`claude`, `gemini`, `openai`, `kimi`, `ollama`) also work with `--adapter <name>`, using the API keys graphify documents.
+Other backends (`claude`, `gemini`, `openai`, `ollama`, or any dd-llm adapter name) also work with `--adapter <name>`, using that adapter's API key (see dd-llm).
 
 ## 7. Where things are written
 

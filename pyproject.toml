@@ -26,6 +26,7 @@ dependencies = [
     "ruamel.yaml",
     "graphifyy[sql]>=0.7.19",   # [sql]: tree-sitter grammar for .sql files
     "networkx",
+    "dd-llm>=0.2.0",            # every LLM call: the adapters shared with GraphLang and SPL.py
     "zinet>=0.2.0",             # graph drawing (workgraph viz, the Map tab) and the comment-preserving YAML
     "pyyaml",
     "streamlit",                # workgraph ui
@@ -43,7 +44,7 @@ mcp = ["mcp"]
 ui = []          # kept so `pip install workgraph[ui]` still works: streamlit is a default dependency now
 semantic = []    # same: sentence-transformers is a default dependency now
 viz = ["zinet[pyvis]>=0.2.0"]
-bedrock = ["boto3"]
+bedrock = ["dd-llm[bedrock]>=0.2.0"]
 leiden = ["graspologic; python_version < '3.13'"]
 dev = ["pytest"]
 

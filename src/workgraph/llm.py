@@ -1,13 +1,14 @@
-"""LLM adapter: the one place that decides which backend serves a prompt.
+"""LLM seam: the one place that decides which backend serves a prompt, and the only one that calls a model.
 
-Backends: our own `cc_cli` plus graphify's (`graphify.llm.BACKENDS`: claude-cli, bedrock, claude, gemini, ...).
-Typical setup: `cc_cli` at home (Claude Code *subscription*, never the API), `bedrock` at work (AWS account).
+Every backend is a dd-llm adapter (`dd_llm.get_adapter`), shared with GraphLang and SPL.py. The names users know stay:
 
-Billing, because the names are easy to confuse:
-    cc_cli      subscription. Strips ANTHROPIC_API_KEY & co. from the environment (see cc_cli.py).
-    claude-cli  graphify's built-in. Passes the environment through: with ANTHROPIC_API_KEY set it bills the API.
-    claude      Anthropic API, per token (ANTHROPIC_API_KEY).
-    bedrock     your AWS account.
+    cc_cli      -> claude_cli   Claude Code *subscription*; dd-llm strips ANTHROPIC_API_KEY & co. from the call's environment.
+    claude-cli  -> claude_cli   (graphify's old name; it is subscription-safe now, which graphify's own was not)
+    claude      -> anthropic    Anthropic API, per token (ANTHROPIC_API_KEY)
+    azure       -> azure_openai
+    bedrock, gemini, ollama, openai, deepseek, ...   the dd-llm adapter of that name; so is any other dd-llm name.
+
+Typical setup: `cc_cli` at home, `bedrock` at work (AWS account).
 
 Resolution order, first hit wins:
     1. explicit argument            complete(..., backend="bedrock")
@@ -16,24 +17,35 @@ Resolution order, first hit wins:
     4. processor `backend:` in the area pack
     5. DEFAULT_BACKEND (cc_cli)
 
-Bedrock is configured through the standard AWS environment plus graphify's model override:
-    AWS_PROFILE / AWS_REGION            credentials and region
-    GRAPHIFY_BEDROCK_MODEL              model or inference-profile id (graphify's built-in default is old; set this)
+Model and time: `WORKGRAPH_MODEL` (any backend; `WORKGRAPH_CC_MODEL` for cc_cli, `GRAPHIFY_BEDROCK_MODEL` for bedrock still work) and
+`WORKGRAPH_CC_TIMEOUT` (seconds, cc_cli). A session, rate or quota limit raises `BackendLimitError`: callers stop instead of hammering the backend.
 """
 from __future__ import annotations
 
 import os
 import shutil
 
+from dd_llm import get_adapter, list_adapters
+from dd_llm.adapters.claude_cli import STRIP_VARS, stripped_vars_present, subscription_env  # noqa: F401  (re-exported for callers and tests)
+
 DEFAULT_BACKEND = "cc_cli"
-OWN_BACKENDS = {"cc_cli"}
+ALIASES = {"cc_cli": "claude_cli", "claude-cli": "claude_cli", "claude": "anthropic", "azure": "azure_openai"}
 BILLING = {
     "cc_cli": "subscription (Claude Code login; API-key env vars stripped)",
-    "claude-cli": "whatever `claude` picks up: API per-token if ANTHROPIC_API_KEY is set, else subscription",
+    "claude-cli": "subscription (same as cc_cli)",
     "claude": "Anthropic API, per token",
     "bedrock": "AWS account",
 }
 ENV_BACKEND = "WORKGRAPH_BACKEND"
+
+
+class BackendLimitError(RuntimeError):
+    """Session / rate / quota limit reached: stop calling this backend for now."""
+
+
+def adapter_name(backend: str) -> str:
+    """The dd-llm adapter that serves a workgraph backend name."""
+    return ALIASES.get(backend, backend)
 
 
 def resolve_backend(*candidates: str | None) -> str:
@@ -42,42 +54,52 @@ def resolve_backend(*candidates: str | None) -> str:
     Call as resolve_backend(explicit, project_backend, processor_backend)."""
     explicit, *configured = candidates
     chosen = explicit or os.environ.get(ENV_BACKEND) or next((c for c in configured if c), None) or DEFAULT_BACKEND
-    from graphify.llm import BACKENDS
-    if chosen not in BACKENDS and chosen not in OWN_BACKENDS:
-        raise ValueError(f"unknown LLM backend {chosen!r}; available: {sorted(set(BACKENDS) | OWN_BACKENDS)}")
+    if adapter_name(chosen) not in list_adapters():
+        raise ValueError(f"unknown LLM backend {chosen!r}; available: {sorted(set(ALIASES) | set(list_adapters()))}")
     return chosen
 
 
-def complete(prompt: str, *, backend: str, max_tokens: int = 4096) -> str:
-    """Send a plain-text prompt to the backend and return the reply text."""
-    if backend == "cc_cli":
-        from . import cc_cli
-        return cc_cli.complete(prompt)
-    from graphify import llm as g   # looked up at call time so tests can patch graphify.llm._call_llm
-    return g._call_llm(prompt, backend=backend, max_tokens=max_tokens)
+def _model(backend: str) -> str:
+    env = os.environ
+    if backend in ("cc_cli", "claude-cli", "claude_cli"):
+        return env.get("WORKGRAPH_MODEL") or env.get("WORKGRAPH_CC_MODEL") or ""        # "": dd-llm's default for the CLI
+    if adapter_name(backend) == "bedrock":
+        return env.get("WORKGRAPH_MODEL") or env.get("GRAPHIFY_BEDROCK_MODEL") or ""
+    return env.get("WORKGRAPH_MODEL") or ""
+
+
+def complete(prompt: str, *, backend: str, max_tokens: int = 4096, allowed_tools: list[str] | None = None) -> str:
+    """Send a plain-text prompt to the backend and return the reply text. Raises BackendLimitError on a limit, RuntimeError on any other failure."""
+    kwargs: dict = {}
+    if adapter_name(backend) == "claude_cli":
+        if os.environ.get("WORKGRAPH_CC_TIMEOUT"):
+            kwargs["timeout"] = int(os.environ["WORKGRAPH_CC_TIMEOUT"])
+        if allowed_tools:
+            kwargs["allowed_tools"] = allowed_tools
+    resp = get_adapter(adapter_name(backend), **kwargs).call(prompt, model=_model(backend), max_tokens=max_tokens)
+    if resp.success:
+        return resp.content
+    err = (resp.error_history or [{}])[-1]
+    msg = err.get("error") or "the backend returned no answer"
+    if err.get("error_type") == "ModelOverloaded":
+        raise BackendLimitError(msg)
+    raise RuntimeError(msg)
 
 
 def check_backend(backend: str) -> list[tuple[str, bool, str]]:
     """Local, offline readiness checks for a backend: [(check, ok, detail)]. Makes no network calls."""
-    from graphify.llm import BACKENDS, _get_backend_api_key
     out: list[tuple[str, bool, str]] = []
-    if backend == "cc_cli":
-        from . import cc_cli
+    name = adapter_name(backend)
+    if name == "claude_cli":
         path = shutil.which("claude")
         out.append(("`claude` on PATH", bool(path), path or "install Claude Code and run `claude` once to log in"))
         if path:
             ok, detail = _claude_login()
             out.append(("subscription login", ok, detail))
-        set_vars = cc_cli.stripped_vars_present()
+        set_vars = stripped_vars_present()
         out.append(("billing env vars stripped for the call", True,
                     ", ".join(set_vars) + " (set in this shell, removed for the call)" if set_vars else "none set"))
-    elif backend == "claude-cli":
-        out.append(("ANTHROPIC_API_KEY unset", not os.environ.get("ANTHROPIC_API_KEY"),
-                    "set: this backend will bill the API; use cc_cli for subscription billing"
-                    if os.environ.get("ANTHROPIC_API_KEY") else "ok"))
-        path = shutil.which("claude")
-        out.append(("`claude` on PATH", bool(path), path or "install Claude Code"))
-    elif backend == "bedrock":
+    elif name == "bedrock":
         try:
             import boto3  # noqa: F401
             out.append(("boto3 installed", True, ""))
@@ -87,10 +109,13 @@ def check_backend(backend: str) -> list[tuple[str, bool, str]]:
         out.append(("AWS credentials in env", has_creds, "set AWS_PROFILE (or key env vars / SSO login)"))
         out.append(("AWS region", bool(os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION")),
                     os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "defaults to us-east-1"))
-        out.append(("GRAPHIFY_BEDROCK_MODEL set", bool(os.environ.get("GRAPHIFY_BEDROCK_MODEL")),
-                    os.environ.get("GRAPHIFY_BEDROCK_MODEL") or f"using graphify default {BACKENDS['bedrock']['default_model']}"))
-    elif backend in BACKENDS:
-        out.append(("API key", bool(_get_backend_api_key(backend)) or backend == "ollama", "see graphify.llm.BACKENDS"))
+        out.append(("model set", bool(_model(backend)), _model(backend) or "using dd-llm's default; set WORKGRAPH_MODEL to choose"))
+    else:
+        try:
+            get_adapter(name)
+            out.append((f"adapter `{name}` ready", True, "an adapter that needs a key or an SDK fails here when it is missing"))
+        except Exception as e:      # missing SDK, missing API key: whatever the adapter says
+            out.append((f"adapter `{name}` ready", False, str(e)[:160]))
     return out
 
 
@@ -100,7 +125,7 @@ def _claude_login() -> tuple[bool, str]:
     import subprocess
     try:
         r = subprocess.run(["claude", "auth", "status"], capture_output=True, text=True, timeout=30,
-                           env=__import__("workgraph.cc_cli", fromlist=["x"]).subscription_env())
+                           env=subscription_env())
         info = json.loads(r.stdout)
     except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError):
         return False, "could not read `claude auth status`; run `claude` once to log in"

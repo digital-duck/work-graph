@@ -59,8 +59,8 @@ def test_llm_items_area_prompt_cache_and_gap_exemption(tmp_path, monkeypatch):
             {"title": "Ignore me", "kind": "nonsense", "stages": ["build"]},
         ]})
 
-    from workgraph import cc_cli
-    monkeypatch.setattr(cc_cli, "complete", lambda prompt, **kw: fake(prompt, backend="cc_cli", max_tokens=0))
+    from workgraph import llm
+    monkeypatch.setattr(llm, "complete", lambda prompt, **kw: fake(prompt, backend="cc_cli", max_tokens=0))
     monkeypatch.setenv("WORKGRAPH_CACHE", str(tmp_path / "cache"))
     (tmp_path / "p" / "docs").mkdir(parents=True)
     (tmp_path / "p" / "docs" / "ROADMAP.md").write_text("# Roadmap\n- [ ] Support SSO\n")
