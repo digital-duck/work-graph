@@ -6,7 +6,7 @@ import pytest
 
 from workgraph import paths
 from workgraph.convert import json_to_yaml, yaml_to_json
-from workgraph.domain import Workspace
+from workgraph.area import Workspace
 from workgraph.pipeline import build_workspace
 from workgraph.schema import validate_layer
 from workgraph.store import Store

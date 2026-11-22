@@ -28,11 +28,11 @@ All three read the same files in the home folder (`~/workgraph`). For a guided w
 | Concept | Meaning |
 |---|---|
 | **Workspace** | A `workspace.yaml` listing your projects (folders or repos). |
-| **Domain pack** | A YAML file defining a domain: its stages, the legal links between them, the gap rules, path rules, and which processor handles which file type. Shipped: `sdlc`, `research`, `publishing`. |
+| **Area pack** | A YAML file defining an area: its stages, the legal links between them, the gap rules, path rules, and which processor handles which file type. Shipped: `sdlc`, `research`, `publishing`. |
 | **Stage tags** | Each artifact carries one or more stage tags from the pack's fixed vocabulary, for example `[requirement, design]`. Unknown tags are rejected. |
 | **Kind** | What an artifact is: `file`, `document`, `requirement`, `decision`, `task`, `symbol`, `external`, ... |
 | **Confidence** | `EXTRACTED` (explicit in the source), `INFERRED` (derived or LLM-suggested), `AMBIGUOUS`. |
-| **Gap** | An artifact missing a link its domain pack expects, such as a requirement with no test. |
+| **Gap** | An artifact missing a link its area pack expects, such as a requirement with no test. |
 | **Layer** | One of several graphs that reference each other: `repo` (built from your projects), `product`, `org` and `process` (written as layer files). Every node has a `layer`. |
 | **Layer file** | A JSON file (with a YAML twin for review) in `<home>/custom/graphs/` that defines a product, org or process layer. See "Layers". |
 | **Home folder** | `~/workgraph` (or `$WORKGRAPH_HOME`): the default workspace, layer files, the built graph, caches and clones. |
@@ -68,7 +68,7 @@ warning: docs/adr/ADR-002.md: broken reference `satisfies: REQ-099`
 wrote ~/workgraph/out/graph.json
 ```
 
-This is one graph with two domains: `acme-shop` uses the `sdlc` pack, `rq-demo` uses the `research` pack. The table shows how many artifacts each project has in each stage. The `layers:` line shows that the example workspace also loaded the org, product and process layer files that sit next to it in `examples/graphs/`.
+This is one graph with two areas: `acme-shop` uses the `sdlc` pack, `rq-demo` uses the `research` pack. The table shows how many artifacts each project has in each stage. The `layers:` line shows that the example workspace also loaded the org, product and process layer files that sit next to it in `examples/graphs/`.
 
 ### 2. See the gaps
 
@@ -118,21 +118,21 @@ The LLM read `docs/ROADMAP.md`, extracted the unchecked items, and tagged each w
 ```bash
 workgraph build --src ~/projects/my-app
 workgraph gaps  --src https://github.com/some-org/some-repo
-workgraph build --src ~/projects/app-a --src ~/projects/app-b --domain sdlc
+workgraph build --src ~/projects/app-a --src ~/projects/app-b --area sdlc
 ```
 
-`--src` accepts a local folder or a git URL (`https://`, `ssh://`, `git://` or `git@host:path`) and can be repeated. URLs are shallow-cloned into `<home>/src/<name>` (and fast-forwarded on later runs); nothing from the clone is executed. Every `--src` project uses `--domain` (default `sdlc`). It cannot be combined with `-c`. The graph is written to `<home>/out/graph.json` like any other build, and `status`, `search` and `ui` then read it.
+`--src` accepts a local folder or a git URL (`https://`, `ssh://`, `git://` or `git@host:path`) and can be repeated. URLs are shallow-cloned into `<home>/src/<name>` (and fast-forwarded on later runs); nothing from the clone is executed. Every `--src` project uses `--area` (default `sdlc`). It cannot be combined with `-c`. The graph is written to `<home>/out/graph.json` like any other build, and `status`, `search` and `ui` then read it.
 
 ## Using it on your own projects
 
 **1. Write a `workspace.yaml`** anywhere (paths are relative to the file, absolute paths also work):
 
 ```yaml
-domain: sdlc                 # default pack for projects that do not say otherwise
+area: sdlc                 # default pack for projects that do not say otherwise
 projects:
   - {name: concept-book,    path: /home/me/projects/concept-book}
   - {name: conceptbook-app, path: /home/me/projects/conceptbook-app}
-  - {name: my-experiments,  path: /home/me/projects/exp, domain: research}   # per-project pack
+  - {name: my-experiments,  path: /home/me/projects/exp, area: research}   # per-project pack
 ```
 
 Per-project options:
@@ -141,7 +141,7 @@ Per-project options:
 |---|---|
 | `name` | label used in output and node ids |
 | `path` | project folder |
-| `domain` | pack for this project (default: the file-level `domain`) |
+| `area` | pack for this project (default: the file-level `area`) |
 | `backend` | LLM backend for this project (overridden by `--adapter`) |
 | `ignore` | extra gitignore-style patterns to skip |
 
@@ -199,7 +199,7 @@ Besides the repo graph, workgraph holds graphs that describe the work around the
 | `org` | `company`, `division`, `department`, `group`, `team`, `person` | who builds and owns it |
 | `process` | `process`, `step` | a delivery process, such as stakeholder interview, requirement spec, design, prototype, build, test, release, feedback |
 
-Every domain pack is also a process template, available as `process:<domain>` (for example `process:sdlc`) without a layer file.
+Every area pack is also a process template, available as `process:<area>` (for example `process:sdlc`) without a layer file.
 
 A layer file (shown as YAML; the JSON twin has the same content):
 
@@ -300,7 +300,7 @@ A reference to something that does not exist (`REQ-099` above) is reported as a 
 | `clones` | list files shared across projects (`=` identical, `~` same path but different) |
 | `context [PATH]` | what the graph knows about the project at PATH (what Claude Code gets at session start) |
 | `doctor` | show which Python, environment, graphify and default backend are in use; warns if you are in conda base |
-| `domains` | list the shipped domain packs and their stages |
+| `areas` | list the shipped area packs and their stages |
 | `show-llm` | show the resolved LLM backend per processor, its billing mode, and readiness |
 
 There is also a hidden `workgraph hook EVENT` (`session-start`, `session-end`): the Claude Code hook handler. It is installed for you, never needs typing, and keeps its name so installed hooks keep working.
@@ -310,7 +310,7 @@ Options (not every option applies to every command; `workgraph <command> --help`
 | Option | Meaning |
 |---|---|
 | `--src URL_OR_PATH` | build from a local folder or a git URL (shallow-cloned into `<home>/src`) instead of a workspace file; repeat it for several. Not combinable with `-c` |
-| `--domain NAME` | domain pack for `--src` projects (default `sdlc`) |
+| `--area NAME` | area pack for `--src` projects (default `sdlc`) |
 | `-c`, `--config FILE` | workspace file. Default: `./workspace.yaml`, else `<home>/workspace.yaml`. A relative name that is not in the current folder is also looked for in `<home>`, so `-c workspace.yaml` finds your default workspace from anywhere |
 | `--semantic` | also run the LLM processors |
 | `--adapter NAME` | LLM backend: `cc_cli` (subscription), `bedrock` (AWS), or any graphify backend |
@@ -465,18 +465,18 @@ for n, d in G.nodes(data=True):
 inferred = [(u, v, e["relation"]) for u, v, e in G.edges(data=True) if e["confidence"] == "INFERRED"]
 ```
 
-Useful node attributes: `kind`, `label`, `project`, `domain`, `stages` (list), `source_file`, and for LLM items `origin`, `status`, `summary`. Useful edge attributes: `relation`, `confidence`, `source_file`.
+Useful node attributes: `kind`, `label`, `project`, `area`, `stages` (list), `source_file`, and for LLM items `origin`, `status`, `summary`. Useful edge attributes: `relation`, `confidence`, `source_file`.
 
-## Customizing a domain pack
+## Customizing an area pack
 
-Built-in packs live in `src/workgraph/domains/*.yaml`. Your own go in `<home>/custom/domains/<name>.yaml` and are
-used by name (`domain: my-process`); `workgraph utils domains` lists them marked `(custom)`. A custom pack with the
+Built-in packs live in `src/workgraph/areas/*.yaml`. Your own go in `<home>/custom/areas/<name>.yaml` and are
+used by name (`area: my-process`); `workgraph utils areas` lists them marked `(custom)`. A custom pack with the
 same name as a built-in one replaces it. To start, copy a built-in pack there and edit it. A pack anywhere else can
 be used by path:
 
 ```yaml
 projects:
-  - {name: mine, path: ., domain: /home/me/packs/my-sdlc.yaml}
+  - {name: mine, path: ., area: /home/me/packs/my-sdlc.yaml}
 ```
 
 The sections of a pack:
@@ -503,9 +503,9 @@ flow_relations:
 
 An expectation can also set `min_symbols` (skip trivial files) and `exclude` (path globs to skip). Run `pytest` after changing a pack; the loader rejects references to unknown stages.
 
-## Domains beyond SDLC
+## Areas beyond SDLC
 
-The same engine works for other domains by switching the pack: `research` (question, literature, hypothesis, experiment, analysis, write-up; code lives in the experiment stage) and `publishing` (idea to promote). Mixed workspaces work: each project picks its own pack, and they land in one graph. `examples/workspace.yaml` is a working mixed example.
+The same engine works for other areas by switching the pack: `research` (question, literature, hypothesis, experiment, analysis, write-up; code lives in the experiment stage) and `publishing` (idea to promote). Mixed workspaces work: each project picks its own pack, and they land in one graph. `examples/workspace.yaml` is a working mixed example.
 
 ## Troubleshooting
 

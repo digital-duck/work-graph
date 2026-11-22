@@ -25,7 +25,7 @@ cp -r examples /tmp/tutorial && cd /tmp/tutorial
 ## 1. The SDLC is a process template
 
 ```bash
-workgraph utils domains
+workgraph utils areas
 ```
 
 ```
@@ -34,7 +34,7 @@ research    Research: question → literature → hypothesis → experiment → 
 sdlc        Software development lifecycle: requirement → design → build → test → release → operate
 ```
 
-Each line is a **domain pack**, a YAML file in `src/workgraph/domains/`. The `sdlc` pack defines the stages, the legal links between them (`design --satisfies--> requirement`, `build --implements--> design`, `test --verifies--> requirement`), the gap rules ("every requirement needs a design and a test") and the path rules that decide which stage a file belongs to (`**/requirements/**` is a requirement, `**/adr/**` is a design, `**/tests/**` is a test). Open `src/workgraph/domains/sdlc.yaml` and read it once; everything below is driven by it.
+Each line is a **area pack**, a YAML file in `src/workgraph/areas/`. The `sdlc` pack defines the stages, the legal links between them (`design --satisfies--> requirement`, `build --implements--> design`, `test --verifies--> requirement`), the gap rules ("every requirement needs a design and a test") and the path rules that decide which stage a file belongs to (`**/requirements/**` is a requirement, `**/adr/**` is a design, `**/tests/**` is a test). Open `src/workgraph/areas/sdlc.yaml` and read it once; everything below is driven by it.
 
 SDLC is one process among many. A different process, such as research or publishing, is another pack. Section 4 adds a process that is not a pack at all.
 
@@ -173,7 +173,7 @@ Layer nodes use readable IDs of the form `<layer>:<path>`, for example `org:acme
 
 Nodes are defined once and referenced by ID from other layers, so the Payments team appears in the graph once and not once per repo or product.
 
-Two processes are linked here. `process:sdlc` was not written by hand: every domain pack in the workspace becomes a process template, with its stages `part_of` it. `process:delivery` is a layer file, a process that is not a pack: eight steps (stakeholder interview, requirement spec, solution design, prototyping, build, test, release, feedback), each `part_of` the process and joined by `precedes`. A product can follow several processes.
+Two processes are linked here. `process:sdlc` was not written by hand: every area pack in the workspace becomes a process template, with its stages `part_of` it. `process:delivery` is a layer file, a process that is not a pack: eight steps (stakeholder interview, requirement spec, solution design, prototyping, build, test, release, feedback), each `part_of` the process and joined by `precedes`. A product can follow several processes.
 
 Check that every reference resolves:
 
@@ -388,7 +388,7 @@ workgraph search "checkout test"
    3.15  [repo/decision] ADR-002: Checkout totals computed server-side   (acme-shop:docs/adr/ADR-002.md)
    3.15  [product/application] Checkout service   (:graphs/product.json)
    3.15  [repo/file] checkout.py   (acme-shop:src/checkout.py)
-   2.82  [process/stage] Test   (:domains/sdlc.yaml)
+   2.82  [process/stage] Test   (:areas/sdlc.yaml)
 ```
 
 Note that one query returned nodes from three layers: the test file you wrote in step 3, a decision, a product application, a code file and a process stage. (Your numbers will match these only if you followed the steps in order.)
@@ -509,7 +509,7 @@ After the import, projects have no folder on machine B yet; `workgraph track <fo
 
 | Step | Framework idea |
 |---|---|
-| 1 | a process is data (a domain pack), not code |
+| 1 | a process is data (an area pack), not code |
 | 2 | artifacts are tagged with lifecycle stages and linked by explicit, annotated and derived edges |
 | 3 | gap rules are graph queries over those stages and links |
 | 4 | several graphs reference each other by ID and resolve into one in-memory graph |
@@ -524,5 +524,5 @@ Next steps:
 
 - Point a workspace at your own repo: copy `examples/acme-shop/workspace.yaml`, set `path:`, and run `build` and `gaps`.
 - Add the LLM pass for planning prose: `workgraph open --semantic --adapter cc_cli -c acme-shop/workspace.yaml` extracts work items from `ROADMAP.md` (needs a logged-in `claude` CLI, see [SETUP.md](SETUP.md)).
-- Write your own process as a layer file or a domain pack: see [USER-GUIDE.md](USER-GUIDE.md).
+- Write your own process as a layer file or an area pack: see [USER-GUIDE.md](USER-GUIDE.md).
 - Read the design behind the layers, IDs and the comment store: [../DEV/README-design.md](../DEV/README-design.md).

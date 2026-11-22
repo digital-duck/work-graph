@@ -11,18 +11,18 @@ Legend: **built** = implemented and covered by tests or a live run; **partial** 
 | Area | Feature | Status | Verification and limits |
 |---|---|---|---|
 | Core | Repo graph from projects (tree-sitter code, markdown frontmatter, annotations, derived `verifies`) | built | tests; run on `acme-shop` and a 113-file real app |
-| Core | Domain packs `sdlc`, `research`, `publishing`; gap rules; broken-reference reports | built | tests |
+| Core | Area packs `sdlc`, `research`, `publishing`; gap rules; broken-reference reports | built | tests |
 | Core | Cross-project `identical_to` / `variant_of` links (`clones`) | built | test |
 | Core | Reload of a built graph for queries (`graph.json`) | built | `query.load_graph`; rebuilding the build pipeline from a saved graph is not needed |
 | LLM | `cc_cli` backend (Claude Code subscription, API variables stripped); `llm_items` extraction with caching | built | unit tests; live run: 4 documents, 26 items, about 5 minutes |
 | LLM | Other backends (`bedrock`, `claude`, `gemini`, ...) through graphify | partial | wiring and readiness checks only; not exercised here |
 | Layers | Layer files: schema, validation, referential integrity (`check`) | built | tests |
-| Layers | Product, org and process layers; cross-layer relations; pack-derived `process:<domain>` templates | built | tests; examples in `examples/graphs/` |
+| Layers | Product, org and process layers; cross-layer relations; pack-derived `process:<area>` templates | built | tests; examples in `examples/graphs/` |
 | Layers | Sub-graph references (`/**`) | built | test |
 | Layers | Layer graph: layers are nodes, layer dependencies are edges, coarseness is relative (section 15) | built | `layers.py`; tests; `workgraph utils layers` |
 | Layers | Per-layer partitions in `out/layers/` and scoped loading, so a view loads only the layers it needs | built | tests check that partitions add up to `graph.json` and that a view loads only the partitions it needs. Search and the older tabs still load the whole `graph.json` |
 | UI | Layers tab: parent canvas and child canvas (pick a node above, see what the finer layer holds under it below) | built | headless app tests; **not looked at in a browser** |
-| Packs | `utils validate-pack` lists every problem in a domain pack | built | tests; all shipped packs pass |
+| Packs | `utils validate-pack` lists every problem in an area pack | built | tests; all shipped packs pass |
 | Layers | `uid` rename hints; `check --assign-uids` | built | test; hints depend on the store having seen the old id |
 | Layers | Process instances (a product's status within a process template) | not built | only templates and the `follows` link exist |
 | Layers | Per-layer vocabulary as YAML packs | not built | kinds and relations are Python constants in `schema.py` |
@@ -74,9 +74,9 @@ Non-goals for the prototype: a multi-user store, access control for the org laye
 | `repo` | project, file, symbol, document, requirement, ... | built today by the pipeline | scanned from projects |
 | `product` | `family`, `product`, `application` | family > product > application | layer file |
 | `org` | `company`, `division`, `department`, `group`, `team`, `person` | company > ... > person | layer file |
-| `process` | `process`, `step` | process > step, with `precedes` between steps | layer file, plus every domain pack |
+| `process` | `process`, `step` | process > step, with `precedes` between steps | layer file, plus every area pack |
 
-Domain packs are process templates. For each pack in the workspace the loader adds a node `process:<domain>` and a `part_of` edge from each of its `stage:<domain>:<id>` nodes, so `follows: process:sdlc` resolves without any layer file. A process that is not a pack (for example stakeholder interview through feedback) can be written as a `process` layer file with `step` nodes and `precedes` edges.
+Area packs are process templates. For each pack in the workspace the loader adds a node `process:<area>` and a `part_of` edge from each of its `stage:<area>:<id>` nodes, so `follows: process:sdlc` resolves without any layer file. A process that is not a pack (for example stakeholder interview through feedback) can be written as a `process` layer file with `step` nodes and `precedes` edges.
 
 Cross-layer relations:
 
@@ -107,7 +107,7 @@ An ID's prefix names its layer: `org:`, `product:`, `process:`, and `stage:` and
 
 ## 4. Layer files
 
-One file per layer, kept together in a single directory: `<home>/custom/graphs/` for the default workspace, or a `graphs/` folder next to a workspace file (the `graphs:` key overrides). The `custom/` folder is the place for everything the user authors, and has room for future things such as user-written domain packs:
+One file per layer, kept together in a single directory: `<home>/custom/graphs/` for the default workspace, or a `graphs/` folder next to a workspace file (the `graphs:` key overrides). The `custom/` folder is the place for everything the user authors, and has room for future things such as user-written area packs:
 
 ```
 examples/graphs/
@@ -208,7 +208,7 @@ Fourteen top-level commands, listed alphabetically in `--help`; the helpers sit 
 | `utils check` | validate layer files and references, report renames, stale YAML, missing uids (`--assign-uids` writes uids) |
 | `utils convert FILE` | JSON <-> YAML with the comment store |
 | `utils claude-setup [--write]` | Claude Code hooks and the plain `/workgraph` command |
-| `utils clones`, `utils context`, `utils doctor`, `utils domains`, `utils show-llm` | shared files, project context, environment check, list packs, backend readiness (formerly `llm`) |
+| `utils clones`, `utils context`, `utils doctor`, `utils areas`, `utils show-llm` | shared files, project context, environment check, list packs, backend readiness (formerly `llm`) |
 | `hook EVENT` | hidden top-level: the Claude Code hook handler. It stays out of the help list and keeps its name because installed hooks call it |
 
 ## 8. Module map
@@ -231,7 +231,7 @@ src/workgraph/
 plugin/            # Claude Code plugin (held back; draft marketplace file in docs/DEV/)
 ```
 
-`pipeline.build_workspace` calls `refs.merge_layers` after the repo graph is built and clustered. Clustering and gap analysis are unchanged: layer nodes are added after clustering, and gap analysis skips nodes that do not belong to a domain pack.
+`pipeline.build_workspace` calls `refs.merge_layers` after the repo graph is built and clustered. Clustering and gap analysis are unchanged: layer nodes are added after clustering, and gap analysis skips nodes that do not belong to an area pack.
 
 ## 9. Tests (the original plan; the suite has since grown to 41 tests)
 
@@ -243,9 +243,9 @@ plugin/            # Claude Code plugin (held back; draft marketplace file in do
 ## 10. Home folder, sources and Claude Code (added after the first build)
 
 - **Home folder.** Because the tool is pip-installed, data does not live in the repo: `$WORKGRAPH_HOME` (default `~/workgraph`) holds `workspace.yaml`, `graphs/` (layer files and `store.sqlite`), `out/graph.json`, `cache/` and `src/`. A workspace file's own `graphs/` folder (as in `examples/`) takes precedence over the home one. graphify's AST cache is redirected into `cache/ast/<project>` so neither projects nor the working directory are written to.
-- **`--src <URL or path>`.** Builds an in-memory workspace (one project per source, default domain `sdlc`). URLs (`https://`, `ssh://`, `git://`, `git@host:path`) are shallow-cloned into `src/<name>` and fast-forwarded on later runs. Nothing from the clone is executed.
+- **`--src <URL or path>`.** Builds an in-memory workspace (one project per source, default area `sdlc`). URLs (`https://`, `ssh://`, `git://`, `git@host:path`) are shallow-cloned into `src/<name>` and fast-forwarded on later runs. Nothing from the clone is executed.
 - **Claude Code.** `SessionStart` and `SessionEnd` hooks call `workgraph hook <event>`. Start tracks the project (git root of the session's cwd, never the home folder), logs the session in the `sessions` table and prints a summary for the session context. End records branch and changed files and starts a detached background build when something changed. Handlers swallow all errors. Installing the hooks into `~/.claude/settings.json` happens only through `claude-setup --write`.
-- **Not done.** An MCP server that lets Claude query the graph on demand (the `mcp` extra is declared but unused), writing session records into the graph as nodes instead of a journal table, and per-project domain choice when auto-tracking (new projects default to `sdlc`).
+- **Not done.** An MCP server that lets Claude query the graph on demand (the `mcp` extra is declared but unused), writing session records into the graph as nodes instead of a journal table, and per-project area choice when auto-tracking (new projects default to `sdlc`).
 
 ## 11. Search, UI and plugin
 
@@ -260,7 +260,7 @@ Only work done after the hooks are installed is tracked, so the work already on 
 
 | Source | Becomes | How |
 |---|---|---|
-| `memory/*.md` (not `MEMORY.md`, the index) | one `memory` node per file, with `memory_type` (`user`, `feedback`, `project`, `reference`) and the file's `description` as its summary | the `claude_memory` processor, in every domain pack. It runs on every build for each tracked project, so new memories arrive with no import step. Memory nodes are untagged (not a lifecycle stage), so gap rules ignore them, and their text is searchable like any document |
+| `memory/*.md` (not `MEMORY.md`, the index) | one `memory` node per file, with `memory_type` (`user`, `feedback`, `project`, `reference`) and the file's `description` as its summary | the `claude_memory` processor, in every area pack. It runs on every build for each tracked project, so new memories arrive with no import step. Memory nodes are untagged (not a lifecycle stage), so gap rules ignore them, and their text is searchable like any document |
 | `<session>.jsonl` | one row in the session journal: id, project, start and end, branch, files touched by Edit/Write calls, and (with `--with-titles`) Claude's own one-line title | `workgraph import-claude --apply`. **Message text is never stored.** Re-running replaces rows by session id |
 | project `CLAUDE.md` | already a design document inside the project | nothing new |
 
@@ -281,7 +281,7 @@ The useful split is **what can be rebuilt** and **what cannot**:
 | YAML comments, uid history | no | yes, as `store/comments.jsonl` and `store/node_ids.jsonl` (`comments` part) |
 | Session journal | no | opt-in (`--with sessions`): it lists changed file names |
 | LLM extraction cache | only by spending subscription time again | opt-in (`--with llm-cache`) |
-| `workspace.yaml` | partly | yes, **portable**: names, `repo` URLs, domains; no local folders |
+| `workspace.yaml` | partly | yes, **portable**: names, `repo` URLs, areas; no local folders |
 | The database `workgraph.sqlite3` | n/a | **never**. It is not inside any synced folder |
 
 **The sync tree.** `export_tree` writes text only: `manifest.json`, `workspace.yaml`, `graphs/`, `store/*.jsonl` and `cache/llm/`. Both routes use it. `export -o FILE.tar.gz` packs it; `sync push` writes it into `<home>/sync/` (a git working tree) and commits. `import FILE` and `sync pull` apply it with `import_tree`.
@@ -310,7 +310,7 @@ Limits: `sync pull` uses a fast-forward-only git pull, so if the repository's hi
 ## 14. Open questions
 
 - Whether `uid` should be assigned automatically on first `convert` instead of through `check --assign-uids`.
-- Per-layer packs: the layer vocabulary is Python constants for now. Moving it to YAML packs would match the domain-pack approach.
+- Per-layer packs: the layer vocabulary is Python constants for now. Moving it to YAML packs would match the area-pack approach.
 - Process instances (status of a product moving through a template).
 - Whether comments should sync as deletions as well as additions (today a deleted comment returns from the other machine).
 - Whether a team or enterprise mode is wanted at all, which would mean a server with accounts and access control rather than files.

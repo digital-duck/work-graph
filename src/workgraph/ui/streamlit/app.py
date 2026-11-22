@@ -10,7 +10,7 @@ import pandas as pd
 import streamlit as st
 
 from workgraph import layers, paths, query, viz
-from workgraph.domain import Workspace
+from workgraph.area import Workspace
 
 st.set_page_config(page_title="Workgraph", page_icon="🕸️", layout="wide")
 

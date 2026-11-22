@@ -11,7 +11,7 @@ from . import paths
 STARTER = """# workgraph default workspace: the projects it knows about.
 # Add projects by hand, with `workgraph track <path>`, or automatically through the Claude Code hooks
 # (`workgraph utils claude-setup`). See docs/GUIDE/USER-GUIDE.md.
-domain: sdlc
+area: sdlc
 projects: []
 """
 
@@ -24,9 +24,9 @@ Everything in this folder is yours: workgraph reads it but never creates content
   teams, people), `process.json` (a delivery process). Each has a `.yaml` twin for review. They are merged into the
   graph on every `workgraph build`. Check them with `workgraph utils check`; convert with `workgraph utils convert`.
   Examples to copy: `examples/graphs/` in the repository. Guide: docs/GUIDE/USER-GUIDE.md, "Layers".
-- `domains/`: your own domain packs, e.g. `domains/my-process.yaml`. Use one by name (`domain: my-process` in a
+- `areas/`: your own area packs, e.g. `areas/my-process.yaml`. Use one by name (`area: my-process` in a
   workspace project). A pack here with the same name as a built-in one replaces it. List them with
-  `workgraph utils domains`; copy a built-in from the package's `domains/` folder to start.
+  `workgraph utils areas`; copy a built-in from the package's `areas/` folder to start.
 
 Everything outside this folder (workspace.yaml, workgraph.sqlite3, out/, cache/, src/, sync/) is managed by workgraph.
 """
@@ -38,7 +38,10 @@ def init_home() -> Path:
     if old.is_dir() and not paths.graphs_dir().exists():       # layer files used to live in <home>/graphs
         paths.custom_dir().mkdir(parents=True, exist_ok=True)
         old.rename(paths.graphs_dir())
-    for d in (h, paths.graphs_dir(), paths.custom_domains_dir(), paths.out_dir(), paths.cache_dir()):
+    old_areas = paths.custom_dir() / "domains"                 # area packs used to be called domain packs (0.3.0)
+    if old_areas.is_dir() and not paths.custom_areas_dir().exists():
+        old_areas.rename(paths.custom_areas_dir())
+    for d in (h, paths.graphs_dir(), paths.custom_areas_dir(), paths.out_dir(), paths.cache_dir()):
         d.mkdir(parents=True, exist_ok=True)
     readme = paths.custom_dir() / "README.md"
     if not readme.exists():
@@ -61,7 +64,7 @@ def _git_remote(path: Path) -> str | None:
         return None
 
 
-def track_project(path: str | Path, name: str | None = None, domain: str | None = None) -> bool:
+def track_project(path: str | Path, name: str | None = None, area: str | None = None) -> bool:
     """Add a project to the default workspace. Returns False if that path is already tracked.
     Edits the YAML in place, so comments in the file are kept."""
     init_home()
@@ -91,8 +94,8 @@ def track_project(path: str | Path, name: str | None = None, domain: str | None 
     entry = {"name": unique, "path": str(path)}
     if repo:
         entry["repo"] = repo      # lets another machine clone this project (workgraph sync pull --clone-missing)
-    if domain:
-        entry["domain"] = domain
+    if area:
+        entry["area"] = area
     entry_map = y.map()
     entry_map.update(entry)
     entry_map.fa.set_flow_style()

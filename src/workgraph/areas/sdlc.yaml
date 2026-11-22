@@ -1,5 +1,5 @@
-# Domain pack: software development lifecycle.
-domain: sdlc
+# Area pack: software development lifecycle.
+area: sdlc
 label: Software development lifecycle
 
 stages:
@@ -51,7 +51,7 @@ ignore: ["**/docs/research/**", "**/docs/archive/**", "**/docs/outreach/**", "**
 #   frontmatter markdown files; YAML frontmatter -> typed nodes + explicit edges
 #   annotations `# relation: ID` comments in code files -> explicit edges
 #   llm         graphify's generic semantic extraction (needs --semantic and a backend)
-#   llm_items   this tool's domain prompt: prose -> typed work items (needs --semantic)
+#   llm_items   this tool's area prompt: prose -> typed work items (needs --semantic)
 processors:
   # Claude Code's own memory for the project (~/.claude/projects/<slug>/memory), if there is any
   - {name: claude-memory, use: claude_memory}

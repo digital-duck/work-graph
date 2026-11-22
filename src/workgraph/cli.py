@@ -11,7 +11,7 @@ import networkx as nx
 from .analyze import find_gaps
 from . import paths
 from . import layers
-from .domain import Domain, Workspace, available_domains, custom_domain_files, validate_pack
+from .area import Area, Workspace, available_areas, custom_area_files, validate_pack
 from .sources import workspace_from_sources
 from .llm import BILLING, check_backend, resolve_backend
 from .pipeline import build_workspace, stage_summary
@@ -27,7 +27,7 @@ def _workspace(args) -> Workspace:
     if getattr(args, "src", None):
         if args.config:
             raise ValueError("use either --src or -c, not both")
-        return workspace_from_sources(args.src, args.domain)
+        return workspace_from_sources(args.src, args.area)
     if args.config:
         cfg = Path(args.config)
         if not cfg.exists() and not cfg.is_absolute() and (paths.home() / cfg).exists():
@@ -59,11 +59,20 @@ def _build(args, final: bool = True):
     return ws, M, communities, warnings
 
 
-def cmd_domains(args) -> None:
-    for name in available_domains():
-        d = Domain.load(name)
-        mark = "  (custom)" if name in custom_domain_files() else ""
+def cmd_areas(args) -> None:
+    for name in available_areas():
+        d = Area.load(name)
+        mark = "  (custom)" if name in custom_area_files() else ""
         print(f"{name:<11} {d.label}: " + " → ".join(d.stages) + mark)
+
+
+def cmd_migrate(args) -> None:
+    """Rewrite a home folder and workspace files from the words of 0.2.x to those of 0.3.0 (see migrate.py)."""
+    from .migrate import migrate
+    done = migrate([Path(c) for c in args.config or []], dry=args.dry_run)
+    for line in done:
+        print(("would do: " if args.dry_run else "") + line)
+    print(f"{'nothing to migrate' if not done else ('%d change(s) %s' % (len(done), 'found (dry run)' if args.dry_run else 'made'))}")
 
 
 def cmd_layers(args) -> None:
@@ -91,7 +100,7 @@ def cmd_layers(args) -> None:
 
 
 def cmd_validate_pack(args) -> None:
-    """Check domain packs (files or names) and list every problem; exit 1 if any pack has one."""
+    """Check area packs (files or names) and list every problem; exit 1 if any pack has one."""
     bad = 0
     for pack in args.pack:
         errs = validate_pack(pack)
@@ -110,7 +119,7 @@ def cmd_llm(args) -> None:
     """Show which backend each project's LLM processors will use, and whether it looks ready."""
     ws = _workspace(args)
     for p in ws.projects:
-        for proc in p.domain.processors:
+        for proc in p.area.processors:
             if proc.use in ("llm", "llm_items"):
                 b = resolve_backend(None, p.backend, proc.backend)
                 print(f"{p.name}/{proc.name} ({proc.use}) -> {b}   billing: {BILLING.get(b, 'see provider')}")
@@ -160,7 +169,7 @@ def cmd_build(args) -> None:
     print(f"{M.number_of_nodes()} nodes, {M.number_of_edges()} edges, {len(communities)} communities")
     for dom, stages in stage_summary(M).items():
         print(f"[{dom}]")
-        for s in ws.domains[dom].stages:
+        for s in ws.areas[dom].stages:
             print(f"  {s:<12} {stages.get(s, {})}")
     counts = layer_summary(M)
     if len(counts) > 1:
@@ -235,7 +244,7 @@ def cmd_init(args) -> None:
 
 def cmd_track(args) -> None:
     from .tracking import track_project
-    added = track_project(args.path, args.name, args.domain)
+    added = track_project(args.path, args.name, args.area)
     print(f"{'tracking' if added else 'already tracking'} {Path(args.path).resolve()} in {paths.default_workspace()}")
 
 
@@ -358,7 +367,7 @@ def cmd_claude_setup(args) -> None:
 def _docs(args):
     M = query.load_graph(args.graph)
     try:
-        roots = query.roots_from_workspace(_workspace(argparse.Namespace(src=None, config=None, domain="sdlc")))
+        roots = query.roots_from_workspace(_workspace(argparse.Namespace(src=None, config=None, area="sdlc")))
     except (FileNotFoundError, ValueError, KeyError):
         roots = {}
     docs = query.filter_docs(query.build_docs(M, roots), layer=args.layer, project=args.project, kind=args.kind)
@@ -395,7 +404,7 @@ def cmd_show(args) -> None:
         node = matches[0]
     d = M.nodes[node]
     print(node)
-    for k in ("label", "kind", "layer", "project", "domain", "stages", "source_file", "status", "origin", "summary"):
+    for k in ("label", "kind", "layer", "project", "area", "stages", "source_file", "status", "origin", "summary"):
         if d.get(k):
             print(f"  {k}: {d[k]}")
     nb = query.neighbors(M, node)
@@ -499,7 +508,7 @@ def cmd_open(args) -> None:
 def cmd_gaps(args) -> None:
     ws, M, _, warnings = _build(args)
     gaps = find_gaps(M, ws)
-    for msg, items in groupby(gaps, key=lambda g: (g["domain"], g["message"])):
+    for msg, items in groupby(gaps, key=lambda g: (g["area"], g["message"])):
         items = list(items)
         print(f"\n[{msg[0]}] {msg[1]} ({len(items)})")
         for g in items:
@@ -546,7 +555,7 @@ def main(argv: list[str] | None = None) -> None:
         epilog="Run `workgraph COMMAND -h` for the options of one command. Guides: docs/GUIDE in the repository.")
     sub = ap.add_subparsers(dest="cmd", required=True, title="commands", metavar="COMMAND")
     utils = sub.add_parser("utils", formatter_class=_Help,
-                           help="helper commands (check, claude-setup, clones, context, convert, doctor, domains, layers, show-llm, validate-pack)",
+                           help="helper commands (areas, check, claude-setup, clones, context, convert, doctor, layers, migrate, show-llm, validate-pack)",
                            description="Helper commands: diagnostics, validation, conversion and setup.")
     usub = utils.add_subparsers(dest="util", required=True, title="utils", metavar="SUBCOMMAND")
     s = usub.add_parser("check", help="validate layer files and cross-graph references")
@@ -556,7 +565,7 @@ def main(argv: list[str] | None = None) -> None:
     s = usub.add_parser("layers", help="show the layer graph (layers as nodes, dependencies as edges) and build counts")
     s.add_argument("-o", "--out", help="layer partitions folder (default: <home>/out/layers)")
     s.set_defaults(fn=cmd_layers)
-    s = usub.add_parser("validate-pack", help="check domain packs (files or names) and list every problem")
+    s = usub.add_parser("validate-pack", help="check area packs (files or names) and list every problem")
     s.add_argument("pack", nargs="+", help="a pack file (.yaml) or the name of a built-in or custom pack")
     s.set_defaults(fn=cmd_validate_pack)
     s = usub.add_parser("convert", help="convert a layer file between JSON and YAML, keeping YAML comments")
@@ -568,7 +577,7 @@ def main(argv: list[str] | None = None) -> None:
     s = sub.add_parser("track", help="add a project folder to the default workspace")
     s.add_argument("path", nargs="?", default=".")
     s.add_argument("--name")
-    s.add_argument("--domain")
+    s.add_argument("--area")
     s.set_defaults(fn=cmd_track)
     s = sub.add_parser("import-claude", help="backfill from Claude Code: track its projects, load session metadata")
     s.add_argument("--apply", action="store_true", help="do it (the default is a dry run that only prints the plan)")
@@ -637,15 +646,19 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("--port", type=int, default=8501)
     s.add_argument("--no-browser", action="store_true")
     s.set_defaults(fn=cmd_ui)
-    usub.add_parser("domains", help="list domain packs").set_defaults(fn=cmd_domains)
+    usub.add_parser("areas", help="list area packs").set_defaults(fn=cmd_areas)
+    s = usub.add_parser("migrate", help="rewrite the home folder and workspace files from the 0.2.x words (domain -> area, layer -> domain)")
+    s.add_argument("-c", "--config", action="append", help="another workspace file to rewrite (the default workspace is always included); repeatable")
+    s.add_argument("--dry-run", action="store_true", help="only say what would change")
+    s.set_defaults(fn=cmd_migrate)
     usub.add_parser("doctor", help="show python/environment/graphify details and warn about conda base").set_defaults(fn=cmd_doctor)
     s = usub.add_parser("show-llm", help="show the resolved LLM backend per processor and check readiness")
     s.add_argument("-c", "--config", help="workspace file (default: ./workspace.yaml, else <home>/workspace.yaml)")
     s.add_argument("--adapter", help="LLM backend, e.g. cc_cli (subscription) or bedrock; overrides config")
     s.add_argument("--src", action="append", metavar="URL_OR_PATH", help="check a folder or git URL instead of a workspace file")
-    s.add_argument("--domain", default="sdlc", help="domain pack for --src projects (default sdlc)")
+    s.add_argument("--area", default="sdlc", help="area pack for --src projects (default sdlc)")
     s.set_defaults(fn=cmd_llm)
-    for group, name, fn, h in ((sub, "build", cmd_build, "build the graph"), (sub, "gaps", cmd_gaps, "report gaps per domain rules"),
+    for group, name, fn, h in ((sub, "build", cmd_build, "build the graph"), (sub, "gaps", cmd_gaps, "report gaps per area rules"),
                                (usub, "clones", cmd_clones, "files shared across projects"),
                                (sub, "open", cmd_open, "open work items from planning docs (use with --semantic)")):
         s = group.add_parser(name, help=h)
@@ -654,7 +667,7 @@ def main(argv: list[str] | None = None) -> None:
         s.add_argument("--semantic", action="store_true", help="also run LLM processors (needs a backend/API key)")
         s.add_argument("--src", action="append", metavar="URL_OR_PATH",
                        help="build from a local folder or a git URL instead of a workspace file (repeatable)")
-        s.add_argument("--domain", default="sdlc", help="domain pack for --src projects (default sdlc)")
+        s.add_argument("--area", default="sdlc", help="area pack for --src projects (default sdlc)")
         s.add_argument("-o", "--out", help="output folder (default: <home>/out)")
         s.add_argument("-q", "--quiet", action="store_true", help="no progress or timing output")
         s.set_defaults(fn=fn)

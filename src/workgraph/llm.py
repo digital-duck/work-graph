@@ -13,7 +13,7 @@ Resolution order, first hit wins:
     1. explicit argument            complete(..., backend="bedrock")
     2. WORKGRAPH_BACKEND env var   export WORKGRAPH_BACKEND=bedrock      <- switch machines without editing YAML
     3. project `backend:` in workspace.yaml
-    4. processor `backend:` in the domain pack
+    4. processor `backend:` in the area pack
     5. DEFAULT_BACKEND (cc_cli)
 
 Bedrock is configured through the standard AWS environment plus graphify's model override:

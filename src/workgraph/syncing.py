@@ -111,9 +111,10 @@ def guard_tree(root: Path) -> list[str]:
 def _portable_workspace() -> dict:
     ws_file = paths.default_workspace()
     raw = yaml.safe_load(ws_file.read_text(encoding="utf-8")) if ws_file.exists() else {}
-    out = {"domain": (raw or {}).get("domain", "sdlc"), "projects": []}
+    from .area import legacy_key
+    out = {"area": legacy_key(raw or {}, "area", "domain", "the default workspace", "sdlc"), "projects": []}
     for p in (raw or {}).get("projects") or []:
-        entry = {k: v for k, v in p.items() if k != "path"}      # folders differ per machine
+        entry = {("area" if k == "domain" else k): v for k, v in p.items() if k != "path"}      # folders differ per machine; `domain` is the old name of `area`
         if "repo" not in entry and p.get("path"):
             from .tracking import _git_remote
             folder = (ws_file.parent / str(p["path"])).resolve()
@@ -252,7 +253,7 @@ def import_tree(src: Path, store: Store) -> dict:
             shutil.copy2(f, t)
             n += 1
     rep["llm cache files added"] = n
-    from .domain import Workspace
+    from .area import Workspace
     rep["unresolved"] = Workspace.load(paths.default_workspace()).unresolved
     return rep
 
@@ -374,7 +375,7 @@ def sync_pull(store: Store, clone_missing: bool = False) -> dict:
                 from .sources import fetch
                 fetch(p["repo"])
                 rep["cloned"].append(p["name"])
-        from .domain import Workspace
+        from .area import Workspace
         rep["unresolved"] = Workspace.load(paths.default_workspace()).unresolved
     return rep
 

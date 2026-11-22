@@ -7,7 +7,7 @@ import yaml
 
 from workgraph import claude_code, paths, sources
 from workgraph.cli import main
-from workgraph.domain import Workspace
+from workgraph.area import Workspace
 from workgraph.tracking import init_home, track_project
 
 EX = Path(__file__).parent.parent / "examples"
@@ -26,11 +26,11 @@ def test_init_and_track_are_idempotent_and_keep_comments():
     assert paths.store_path().exists()                 # the database exists from the start
     assert track_project(EX / "acme-shop") is True
     assert track_project(EX / "acme-shop") is False
-    assert track_project(EX / "rq-demo", domain="research") is True
+    assert track_project(EX / "rq-demo", area="research") is True
     text = paths.default_workspace().read_text()
     assert text.startswith("# workgraph default workspace")        # comments survive the edit
     projects = yaml.safe_load(text)["projects"]
-    assert [p["name"] for p in projects] == ["acme-shop", "rq-demo"] and projects[1]["domain"] == "research"
+    assert [p["name"] for p in projects] == ["acme-shop", "rq-demo"] and projects[1]["area"] == "research"
 
 
 def test_build_uses_default_workspace_and_writes_to_home(capsys):
@@ -155,12 +155,12 @@ def test_legacy_graphs_folder_moves_into_custom(tmp_path):
     assert Workspace.load(paths.default_workspace()).graphs_dir == paths.graphs_dir().resolve()   # the default workspace finds custom/graphs
 
 
-def test_custom_domain_pack_is_found_by_name_and_wins_over_builtin(tmp_path):
-    from workgraph.domain import Domain, available_domains
+def test_custom_area_pack_is_found_by_name_and_wins_over_builtin(tmp_path):
+    from workgraph.area import Area, available_areas
     init_home()
-    src = (Path(__file__).parent.parent / "src/workgraph/domains/research.yaml").read_text(encoding="utf-8")
-    (paths.custom_domains_dir() / "mine.yaml").write_text(src.replace("domain: research", "domain: mine"), encoding="utf-8")
-    assert "mine" in available_domains()
-    assert Domain.load("mine").name == "mine"
-    (paths.custom_domains_dir() / "sdlc.yaml").write_text(src, encoding="utf-8")
-    assert Domain.load("sdlc").name == "research"
+    src = (Path(__file__).parent.parent / "src/workgraph/areas/research.yaml").read_text(encoding="utf-8")
+    (paths.custom_areas_dir() / "mine.yaml").write_text(src.replace("area: research", "area: mine"), encoding="utf-8")
+    assert "mine" in available_areas()
+    assert Area.load("mine").name == "mine"
+    (paths.custom_areas_dir() / "sdlc.yaml").write_text(src, encoding="utf-8")
+    assert Area.load("sdlc").name == "research"

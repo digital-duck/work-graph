@@ -1,4 +1,4 @@
-# One graph, two domains: each project declares its own domain pack.
+# One graph, two areas: each project declares its own area pack.
 projects:
-  - {name: acme-shop, path: acme-shop, domain: sdlc}
-  - {name: rq-demo,   path: rq-demo,   domain: research}
+  - {name: acme-shop, path: acme-shop, area: sdlc}
+  - {name: rq-demo,   path: rq-demo,   area: research}

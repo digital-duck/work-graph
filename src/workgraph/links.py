@@ -7,7 +7,7 @@ from collections import defaultdict
 
 import networkx as nx
 
-from .domain import Workspace
+from .area import Workspace
 
 _MIN_BYTES = 64   # ignore empty/trivial files (empty __init__.py would "match" everywhere)
 

@@ -1,11 +1,12 @@
-"""Domain packs and workspaces.
+"""Area packs and workspaces.
 
-A domain pack (domains/<name>.yaml) is the only thing that changes between use cases:
+An area pack (areas/<name>.yaml) is the only thing that changes between use cases:
 vocabulary (stages, relations, gap rules, path classifiers) plus processing (which
 artifact types go through which processor and LLM backend). The graph engine is shared.
 """
 from __future__ import annotations
 
+import sys
 import re
 from dataclasses import dataclass, field
 from fnmatch import fnmatchcase
@@ -15,7 +16,7 @@ import yaml
 
 from . import paths
 
-DOMAINS_DIR = Path(__file__).parent / "domains"
+AREAS_DIR = Path(__file__).parent / "areas"
 # Node kinds that are structure, not knowledge: excluded from gap checks and summaries.
 STRUCTURAL_KINDS = {"stage", "project", "rationale", "symbol", "external"}
 
@@ -31,14 +32,29 @@ def glob_match(path: str, globs: list[str]) -> bool:
     return any(fnmatchcase(path, g.casefold()) or fnmatchcase("/" + path, g.casefold()) for g in globs)
 
 
-def custom_domain_files() -> dict[str, Path]:
-    """Your own packs: <home>/custom/domains/<name>.yaml (or .yml), by name."""
-    d = paths.custom_domains_dir()
+_WARNED: set[str] = set()
+
+
+def legacy_key(raw: dict, new: str, old: str, where: str, default=None):
+    """`raw[new]`, or `raw[old]` (the name before 0.3.0: `domain` was renamed `area`) with a one-time warning on stderr."""
+    if new in raw:
+        return raw[new]
+    if old in raw:
+        if where not in _WARNED:
+            _WARNED.add(where)
+            print(f"workgraph: {where}: `{old}:` is now `{new}:` (run `workgraph utils migrate` to rewrite it)", file=sys.stderr)
+        return raw[old]
+    return default
+
+
+def custom_area_files() -> dict[str, Path]:
+    """Your own packs: <home>/custom/areas/<name>.yaml (or .yml), by name."""
+    d = paths.custom_areas_dir()
     return {p.stem: p for p in sorted(d.glob("*.y*ml")) if p.suffix in (".yaml", ".yml")} if d.is_dir() else {}
 
 
-def available_domains() -> list[str]:
-    return sorted({p.stem for p in DOMAINS_DIR.glob("*.yaml")} | set(custom_domain_files()))
+def available_areas() -> list[str]:
+    return sorted({p.stem for p in AREAS_DIR.glob("*.yaml")} | set(custom_area_files()))
 
 
 @dataclass
@@ -58,7 +74,7 @@ class Processor:
 
 
 @dataclass
-class Domain:
+class Area:
     name: str
     label: str
     stages: dict[str, Stage]
@@ -66,19 +82,19 @@ class Domain:
     expectations: list[dict]
     classifiers: list[dict]
     processors: list[Processor]
-    ignore: list[str] = field(default_factory=list)   # default noise patterns for this domain
+    ignore: list[str] = field(default_factory=list)   # default noise patterns for this area
 
     @classmethod
-    def load(cls, name_or_path: str | Path) -> "Domain":
+    def load(cls, name_or_path: str | Path) -> "Area":
         p = Path(name_or_path)
         if p.suffix not in (".yaml", ".yml"):
-            p = custom_domain_files().get(str(name_or_path)) or DOMAINS_DIR / f"{name_or_path}.yaml"   # yours win
+            p = custom_area_files().get(str(name_or_path)) or AREAS_DIR / f"{name_or_path}.yaml"   # yours win
             if not p.exists():
-                raise ValueError(f"unknown domain {name_or_path!r}; available: {available_domains()}")
+                raise ValueError(f"unknown area {name_or_path!r}; available: {available_areas()}")
         raw = yaml.safe_load(p.read_text(encoding="utf-8"))
         stages = {s["id"]: Stage(s["id"], s.get("label", s["id"]), s.get("next", [])) for s in raw["stages"]}
         d = cls(
-            name=raw["domain"], label=raw.get("label", raw["domain"]), stages=stages,
+            name=legacy_key(raw, "area", "domain", f"area pack {p.name}"), label=raw.get("label", legacy_key(raw, "area", "domain", f"area pack {p.name}")), stages=stages,
             flow_relations=raw.get("flow_relations", []), expectations=raw.get("expectations", []),
             classifiers=raw.get("classifiers", []), ignore=raw.get("ignore", []),
             processors=[Processor(x["name"], x["use"], x.get("match", []), x.get("backend"), x.get("kinds", []))
@@ -122,7 +138,7 @@ class Domain:
         """Enforce the constrained tag vocabulary; returns de-duplicated tags in order."""
         unknown = [t for t in tags if t not in self.stages]
         if unknown:
-            raise ValueError(f"unknown stage tag(s) {unknown} for domain {self.name!r}; allowed: {sorted(self.stages)}")
+            raise ValueError(f"unknown stage tag(s) {unknown} for area {self.name!r}; allowed: {sorted(self.stages)}")
         return list(dict.fromkeys(tags))
 
     def process_extraction(self) -> dict:
@@ -130,11 +146,11 @@ class Domain:
         nodes, edges = [], []
         for s in self.stages.values():
             nodes.append({"id": self.stage_node(s.id), "label": s.label, "file_type": "concept",
-                          "source_file": f"domains/{self.name}.yaml", "kind": "stage",
-                          "domain": self.name, "stages": [s.id]})
+                          "source_file": f"areas/{self.name}.yaml", "kind": "stage",
+                          "area": self.name, "stages": [s.id]})
             for n in s.next:
                 edges.append({"source": self.stage_node(s.id), "target": self.stage_node(n), "relation": "precedes",
-                              "confidence": "EXTRACTED", "source_file": f"domains/{self.name}.yaml"})
+                              "confidence": "EXTRACTED", "source_file": f"areas/{self.name}.yaml"})
         return {"nodes": nodes, "edges": edges, "hyperedges": []}
 
 
@@ -142,11 +158,11 @@ def _resolve_pack(name_or_path: str | Path) -> Path:
     p = Path(name_or_path)
     if p.suffix in (".yaml", ".yml"):
         return p
-    return custom_domain_files().get(str(name_or_path)) or DOMAINS_DIR / f"{name_or_path}.yaml"
+    return custom_area_files().get(str(name_or_path)) or AREAS_DIR / f"{name_or_path}.yaml"
 
 
 def validate_pack(name_or_path: str | Path) -> list[str]:
-    """Every problem in a domain pack, not just the first (`Domain.load` stops at the first).
+    """Every problem in an area pack, not just the first (`Area.load` stops at the first).
     Empty list = the pack loads. Accepts a file path or a pack name (your own packs win)."""
     from .processors import REGISTRY       # imported here: processors imports this module
     p = _resolve_pack(name_or_path)
@@ -171,8 +187,10 @@ def validate_pack(name_or_path: str | Path) -> list[str]:
             return []
         return v
 
-    if not isinstance(raw.get("domain"), str) or not raw.get("domain"):
-        errs.append("`domain` is required and must be a name")
+    if "domain" in raw and "area" not in raw:
+        errs.append("`domain:` is now `area:` (run `workgraph utils migrate`)")
+    elif not isinstance(raw.get("area"), str) or not raw.get("area"):
+        errs.append("`area` is required and must be a name")
     if "label" in raw and not isinstance(raw["label"], str):
         errs.append("`label` must be a string")
 
@@ -251,8 +269,8 @@ def validate_pack(name_or_path: str | Path) -> list[str]:
 class Project:
     name: str
     path: Path
-    domain: Domain
-    backend: str | None = None   # overrides the LLM backend named in the domain's processors
+    area: Area
+    backend: str | None = None   # overrides the LLM backend named in the area's processors
     ignore: list[str] = field(default_factory=list)   # extra gitignore-style patterns (generated output etc.)
 
 
@@ -263,19 +281,19 @@ class Workspace:
     unresolved: list[str] = field(default_factory=list)   # projects with no folder on this machine (synced, not yet cloned/tracked)
 
     @property
-    def domains(self) -> dict[str, Domain]:
-        return {p.domain.name: p.domain for p in self.projects}
+    def areas(self) -> dict[str, Area]:
+        return {p.area.name: p.area for p in self.projects}
 
     @classmethod
     def load(cls, path: str | Path) -> "Workspace":
         path = Path(path)
         raw = yaml.safe_load(path.read_text(encoding="utf-8"))
-        default = raw.get("domain", "sdlc")
-        cache: dict[str, Domain] = {}
+        default = legacy_key(raw, "area", "domain", f"workspace file {path.name}", "sdlc")
+        cache: dict[str, Area] = {}
         projects, unresolved = [], []
         for p in raw["projects"]:
-            dn = p.get("domain", default)
-            cache.setdefault(dn, Domain.load(dn))
+            dn = legacy_key(p, "area", "domain", f"workspace file {path.name}", default)
+            cache.setdefault(dn, Area.load(dn))
             if p.get("path"):
                 folder = (path.parent / p["path"]).resolve()
             else:                      # a project that arrived through sync: usable once cloned or tracked here

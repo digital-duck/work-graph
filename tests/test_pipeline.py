@@ -1,17 +1,17 @@
 from pathlib import Path
 
 from workgraph.analyze import find_gaps
-from workgraph.domain import Workspace
+from workgraph.area import Workspace
 from workgraph.pipeline import build_workspace, stage_summary
 
 EX = Path(__file__).parent.parent / "examples"
 
 
-def test_multi_domain_workspace_gaps():
+def test_multi_area_workspace_gaps():
     ws = Workspace.load(EX / "workspace.yaml")
     M, _, warnings = build_workspace(ws)
     assert set(stage_summary(M)) == {"sdlc", "research"}
-    got = {(g["domain"], g["message"], g["label"].split(":")[0]) for g in find_gaps(M, ws)}
+    got = {(g["area"], g["message"], g["label"].split(":")[0]) for g in find_gaps(M, ws)}
     assert ("sdlc", "requirement has no design", "REQ-003") in got
     assert ("sdlc", "requirement has no test", "REQ-003") in got
     # tests/test_checkout.py declares `# verifies: REQ-002`, so REQ-002 and src/checkout.py are covered, not gaps
@@ -31,7 +31,7 @@ def test_derived_verifies_edge_is_inferred():
 
 def _ws(tmp_path, projects):
     cfg = tmp_path / "workspace.yaml"
-    lines = ["domain: sdlc", "projects:"] + [f"  - {{name: {n}, path: {n}}}" for n in projects]
+    lines = ["area: sdlc", "projects:"] + [f"  - {{name: {n}, path: {n}}}" for n in projects]
     cfg.write_text("\n".join(lines) + "\n")
     return Workspace.load(cfg)
 
@@ -48,7 +48,7 @@ def test_cross_project_clone_links(tmp_path):
     assert M.graph["clones"][0]["projects"] == ["a", "b", "c"]
 
 
-def test_llm_items_domain_prompt_cache_and_gap_exemption(tmp_path, monkeypatch):
+def test_llm_items_area_prompt_cache_and_gap_exemption(tmp_path, monkeypatch):
     import json
     calls = []
 

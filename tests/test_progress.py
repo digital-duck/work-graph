@@ -3,7 +3,7 @@ import time
 from pathlib import Path
 
 from workgraph.cli import main
-from workgraph.domain import Workspace
+from workgraph.area import Workspace
 from workgraph.pipeline import build_workspace
 from workgraph.progress import NullProgress, Progress, fmt_secs
 

@@ -51,7 +51,7 @@ dev = ["pytest"]
 workgraph = "workgraph.cli:main"
 
 [tool.setuptools.package-data]
-workgraph = ["domains/*.yaml", "data/*.md"]
+workgraph = ["areas/*.yaml", "data/*.md"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

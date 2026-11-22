@@ -1,3 +1,3 @@
-domain: sdlc
+area: sdlc
 projects:
   - {name: acme-shop, path: .}

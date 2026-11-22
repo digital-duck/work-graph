@@ -13,7 +13,7 @@ from workgraph import claude_import as ci
 from workgraph import paths, syncing
 from workgraph.cli import main
 from workgraph.convert import json_to_yaml
-from workgraph.domain import Workspace
+from workgraph.area import Workspace
 from workgraph.store import Store
 from workgraph.tracking import init_home, track_project
 

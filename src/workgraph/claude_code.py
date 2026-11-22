@@ -82,12 +82,17 @@ def rebuild_in_background() -> None:
 def context_summary(name: str) -> str:
     """What the last build knows about project `name`, as a few lines for the session context."""
     from .analyze import find_gaps
-    from .domain import Workspace
+    from .area import Workspace
     import networkx as nx
     graph = paths.out_dir() / "graph.json"
     if not graph.exists():
         return f"[workgraph] tracking project {name}; no graph built yet (a build has been started in the background)."
-    M = nx.node_link_graph(json.loads(graph.read_text(encoding="utf-8")), edges="edges")
+    from .query import check_format
+    try:
+        M = check_format(nx.node_link_graph(json.loads(graph.read_text(encoding="utf-8")), edges="edges"), graph)
+    except ValueError:                       # built by an older workgraph: rebuild, and say so, rather than misread its words
+        rebuild_in_background()
+        return f"[workgraph] tracking project {name}; the graph was built by an older workgraph and is being rebuilt in the background."
     ws = Workspace.load(paths.default_workspace())
     built = time.strftime("%Y-%m-%d %H:%M", time.localtime(graph.stat().st_mtime))
     lines = [f"[workgraph] memory for project {name} (graph built {built}, {graph})"]

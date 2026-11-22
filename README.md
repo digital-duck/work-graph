@@ -57,7 +57,7 @@ The database never leaves the machine. What cannot be rebuilt (layer files, YAML
 
 ### Multiple graphs
 
-Today's graph covers repositories. The vision is a set of graphs, each with its own vocabulary (a domain pack) and its own owner, that reference one another:
+Today's graph covers repositories. The vision is a set of graphs, each with its own vocabulary (an area pack) and its own owner, that reference one another:
 
 | Graph | Describes | Example hierarchy |
 |---|---|---|
@@ -99,22 +99,22 @@ Converters go both ways (JSON <-> YAML). The conversion must be lossless for gra
 
 ## Core ideas
 
-### Built on graphify, adapted per domain
+### Built on graphify, adapted per area
 
 The engine is [graphify](https://github.com/Graphify-Labs/graphify), used as a library from PyPI. It supplies file detection, tree-sitter extraction for about 25 languages, LLM semantic extraction with pluggable backends, entity dedup, Leiden clustering, graph queries and export. The graph is a NetworkX graph throughout.
 
-`workgraph` is a thin layer that adapts it to a **domain** by supplying a *domain pack*, a YAML file with two halves:
+`workgraph` is a thin layer that adapts it to a **area** by supplying a *area pack*, a YAML file with two halves:
 
 | Layer | What the pack defines | Example (`sdlc`) |
 |---|---|---|
 | **Vocabulary** | stages (a constrained tag set) and their flow, legal relations, gap rules, path classifiers | requirement → design → build → test → release → operate; `test --verifies--> requirement` |
 | **Processing** | which artifact types go through which processor and LLM backend | `*.py` → tree-sitter; `*.md` → frontmatter; `*.pdf` → LLM (`claude-cli`) |
 
-Shipped packs (`src/workgraph/domains/`): **`sdlc`**, **`research`** (question → literature → hypothesis → experiment → analysis → write-up, where code is an experiment) and **`publishing`** (idea → outline → draft → edit → publish → promote). A new domain is a new YAML file. A workspace can mix domains, since each project picks its own pack, and all of them land in one graph.
+Shipped packs (`src/workgraph/areas/`): **`sdlc`**, **`research`** (question → literature → hypothesis → experiment → analysis → write-up, where code is an experiment) and **`publishing`** (idea → outline → draft → edit → publish → promote). A new area is a new YAML file. A workspace can mix areas, since each project picks its own pack, and all of them land in one graph.
 
 ### Graph model
 
-- **Process layer**: `stage:<domain>:<id>` nodes joined by `precedes`, and `project:<name>` nodes joined to the stages they take part in.
+- **Process layer**: `stage:<area>:<id>` nodes joined by `precedes`, and `project:<name>` nodes joined to the stages they take part in.
 - **Knowledge layer**: artifacts (files, symbols, documents, and typed nodes such as requirements, decisions, questions and hypotheses) with a `kind`, a `project`, and `stages`, a **list of stage tags** validated against the pack's vocabulary. A node may carry several tags, such as `[requirement, design]`. Each tag is also an `in_stage` edge.
 - Edges carry `relation` and `confidence`: `EXTRACTED` (explicit in source), `INFERRED` (derived or LLM-suggested), or `AMBIGUOUS`.
 - Analysis and clustering run on the knowledge layer only, because stage and project nodes are hubs that would skew them.
@@ -190,7 +190,7 @@ Python 3.10+ (conda env), NetworkX, graphify (PyPI release), PyYAML. LLM backend
 
 - `README-graph-vision.md` in the ZiNets repository: the graph-first vision across the ZiNets ecosystem (ConceptBook, Graph-Code, and this project) and why a declarative graph is the common intermediate representation
 - [docs/GUIDE/SETUP.md](https://github.com/digital-duck/work-graph/blob/main/docs/GUIDE/SETUP.md): installation, `cc_cli` (subscription) and Bedrock setup, troubleshooting
-- [docs/GUIDE/USER-GUIDE.md](https://github.com/digital-duck/work-graph/blob/main/docs/GUIDE/USER-GUIDE.md): getting started, workspace files, linking conventions, commands, customizing domain packs
+- [docs/GUIDE/USER-GUIDE.md](https://github.com/digital-duck/work-graph/blob/main/docs/GUIDE/USER-GUIDE.md): getting started, workspace files, linking conventions, commands, customizing area packs
 
 ## Quickstart
 
@@ -199,10 +199,10 @@ conda create -n graf python=3.11 pip -y && conda activate graf   # dedicated env
 python -m pip install -e ".[dev]"
 workgraph utils doctor                                      # confirm you are in graf, not conda base
 
-workgraph utils domains                                     # list domain packs
+workgraph utils areas                                     # list area packs
 workgraph build -c examples/workspace.yaml            # build the graph, write ~/workgraph/out/graph.json
 workgraph gaps --src https://github.com/digital-duck/work-graph   # any local folder or git URL, no workspace file
-workgraph gaps  -c examples/workspace.yaml            # report gaps per domain rules
+workgraph gaps  -c examples/workspace.yaml            # report gaps per area rules
 workgraph utils clones -c examples/workspace.yaml           # files shared across projects
 workgraph utils check -c examples/workspace.yaml            # validate the org/product layer files and cross-graph references
 workgraph utils convert examples/graphs/product.json        # JSON <-> YAML, YAML comments kept in the store
@@ -214,7 +214,7 @@ python -m pytest
 
 ## LLM backends (home vs work)
 
-All LLM calls go through one adapter, `src/workgraph/llm.py`. The backend is chosen in this order: explicit argument, then the `WORKGRAPH_BACKEND` environment variable, then the project's `backend:` in `workspace.yaml`, then the processor's `backend:` in the domain pack, then the default `cc_cli`.
+All LLM calls go through one adapter, `src/workgraph/llm.py`. The backend is chosen in this order: explicit argument, then the `WORKGRAPH_BACKEND` environment variable, then the project's `backend:` in `workspace.yaml`, then the processor's `backend:` in the area pack, then the default `cc_cli`.
 
 | Backend | Billing | Notes |
 |---|---|---|
@@ -242,8 +242,8 @@ workgraph build --semantic -c workspace.yaml
 
 ```
 src/workgraph/
-  domains/*.yaml   # domain packs: sdlc, research, publishing
-  domain.py        # Domain / Workspace loading, stage-tag validation, path classifiers
+  areas/*.yaml   # area packs: sdlc, research, publishing
+  area.py        # Area / Workspace loading, stage-tag validation, path classifiers
   llm.py           # LLM adapter: backend resolution + billing labels (cc_cli at home, bedrock at work)
   cc_cli.py        # subscription-only Claude Code backend (ported from SPL.py)
   processors.py    # processing layer: ast, frontmatter, annotations, llm, llm_items
@@ -278,7 +278,7 @@ examples/graphs/   # org and product layer files (JSON canonical, YAML for revie
 ## Hackathon scope
 
 **Must have (MVP)**
-- [x] Domain packs (`sdlc`, `research`, `publishing`) with constrained stage tags
+- [x] Area packs (`sdlc`, `research`, `publishing`) with constrained stage tags
 - [x] Ingest code (tree-sitter) and Markdown with frontmatter; annotations; derived `verifies` edges
 - [x] Gap analysis and broken-reference reporting
 - [x] Persist the graph (`graph.json`) and load it back for search, `show`, `status` and the UI

@@ -18,7 +18,7 @@ Do what they asked, using the `workgraph` CLI through Bash:
 |---|---|
 | (empty) or `status` | `workgraph status`, then summarize the context above and what to look at next |
 | `search <text>` | `workgraph search "<text>"`; add `--semantic` when the text is a question or a description rather than names |
-| `gaps` | `workgraph gaps --src .` (artifacts missing links their domain pack expects, plus broken references) |
+| `gaps` | `workgraph gaps --src .` (artifacts missing links their area pack expects, plus broken references) |
 | `show <node>` | `workgraph show "<node>"` (a node id, or a label such as `REQ-002`) |
 | `build` | `workgraph build` (rebuilds the graph of every tracked project; no LLM) |
 | `track` | `workgraph track .` (add this folder to the tracked projects) |

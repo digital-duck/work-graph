@@ -27,8 +27,8 @@ def custom_dir() -> Path:
     return home() / "custom"
 
 
-def custom_domains_dir() -> Path:
-    return custom_dir() / "domains"
+def custom_areas_dir() -> Path:
+    return custom_dir() / "areas"
 
 
 def graphs_dir() -> Path:

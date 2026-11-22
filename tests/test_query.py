@@ -5,7 +5,7 @@ import pytest
 
 from workgraph import query
 from workgraph.cli import main
-from workgraph.domain import Workspace
+from workgraph.area import Workspace
 from workgraph.pipeline import build_workspace
 
 EX = Path(__file__).parent.parent / "examples"

@@ -16,7 +16,7 @@ from pathlib import Path
 
 import yaml
 
-from .domain import Processor, Project, make_id
+from .area import Processor, Project, make_id
 
 NESTED_OK_MARKER = ".git"
 TEMP_PREFIXES = ("/tmp/", "/var/tmp/")        # scratch work, not projects

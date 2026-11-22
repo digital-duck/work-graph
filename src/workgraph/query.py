@@ -26,7 +26,15 @@ def load_graph(path: str | Path | None = None) -> nx.MultiDiGraph:
     p = Path(path) if path else paths.out_dir() / "graph.json"
     if not p.exists():
         raise FileNotFoundError(f"no graph at {p}: run `workgraph build` first")
-    return nx.node_link_graph(json.loads(p.read_text(encoding="utf-8")), edges="edges")
+    return check_format(nx.node_link_graph(json.loads(p.read_text(encoding="utf-8")), edges="edges"), p)
+
+
+def check_format(M: nx.MultiDiGraph, where: str | Path = "the graph") -> nx.MultiDiGraph:
+    """Refuse a graph built before the 0.3.0 renames (it has no format mark, and `domain`/`layer` then meant other things): rebuild it."""
+    from .migrate import FORMAT
+    if M.graph.get("workgraph_format", 0) < FORMAT and any("domain" in d for _, d in M.nodes(data=True)):
+        raise ValueError(f"{where} was built by an older workgraph (before the domain/area/layer rename): run `workgraph build` again")
+    return M
 
 
 def tokens(text: str) -> list[str]:
@@ -287,17 +295,17 @@ def summary(M: nx.MultiDiGraph) -> dict:
 
 
 def gaps_for(M: nx.MultiDiGraph) -> list[dict]:
-    """Gap rules evaluated on a loaded graph, using the domain packs the nodes name."""
+    """Gap rules evaluated on a loaded graph, using the area packs the nodes name."""
     from .analyze import find_gaps
-    from .domain import Domain
-    names = {d.get("domain") for _, d in M.nodes(data=True) if d.get("domain")}
-    domains = {}
+    from .area import Area
+    names = {d.get("area") for _, d in M.nodes(data=True) if d.get("area")}
+    areas = {}
     for n in names:
         try:
-            domains[n] = Domain.load(n)
+            areas[n] = Area.load(n)
         except ValueError:
             pass
-    return find_gaps(M, SimpleNamespace(domains=domains))
+    return find_gaps(M, SimpleNamespace(areas=areas))
 
 
 def neighbors(M: nx.MultiDiGraph, node: str) -> dict[str, list[tuple[str, str, str]]]:

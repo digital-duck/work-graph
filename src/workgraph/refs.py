@@ -8,7 +8,7 @@ from pathlib import Path
 
 import networkx as nx
 
-from .domain import Workspace
+from .area import Workspace
 from .schema import layer_of, validate_layer
 from .store import Store, file_key, sha256
 
@@ -103,10 +103,10 @@ def _rename_hint(missing: str, store: Store | None, current: dict[str, str]) -> 
 
 
 def add_process_templates(M: nx.MultiDiGraph, ws: Workspace) -> None:
-    """Every domain pack is a process template: `process:<domain>` with its stages `part_of` it."""
-    for name, dom in ws.domains.items():
+    """Every area pack is a process template: `process:<area>` with its stages `part_of` it."""
+    for name, dom in ws.areas.items():
         pid = f"process:{name}"
-        M.add_node(pid, label=dom.label, kind="process", layer="process", stages=[], source_file=f"domains/{name}.yaml")
+        M.add_node(pid, label=dom.label, kind="process", layer="process", stages=[], source_file=f"areas/{name}.yaml")
         for s in dom.stages:
             M.add_edge(dom.stage_node(s), pid, relation="part_of", confidence="EXTRACTED")
 

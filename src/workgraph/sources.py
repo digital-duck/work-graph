@@ -6,7 +6,7 @@ import subprocess
 from pathlib import Path
 
 from . import paths
-from .domain import Domain, Project, Workspace
+from .area import Area, Project, Workspace
 
 URL_RE = re.compile(r"^(https://|ssh://|git://|git@[\w.\-]+:)")
 
@@ -35,9 +35,9 @@ def fetch(url: str) -> Path:
     return dest
 
 
-def workspace_from_sources(sources: list[str], domain: str = "sdlc") -> Workspace:
+def workspace_from_sources(sources: list[str], area: str = "sdlc") -> Workspace:
     """An in-memory workspace with one project per source (local directory or git URL)."""
-    dom = Domain.load(domain)
+    dom = Area.load(area)
     projects, seen = [], set()
     for src in sources:
         path = fetch(src) if is_url(src) else Path(src).expanduser().resolve()

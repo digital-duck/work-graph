@@ -9,7 +9,7 @@ import networkx as nx
 from graphify.build import build
 from graphify.cluster import cluster
 
-from .domain import STRUCTURAL_KINDS, Project, Workspace, make_id
+from .area import STRUCTURAL_KINDS, Project, Workspace, make_id
 from . import paths
 from .links import cross_project_links
 from .processors import run_processors
@@ -30,8 +30,8 @@ def _kind(n: dict) -> str:
 
 
 def _tag(project: Project, ex: dict, warnings: list[str]) -> dict:
-    """Namespace ids by project, set kind/domain, and attach validated stage tags + their edges."""
-    d, pid = project.domain, f"project:{project.name}"
+    """Namespace ids by project, set kind/area, and attach validated stage tags + their edges."""
+    d, pid = project.area, f"project:{project.name}"
     pre = lambda i: f"{project.name}:{i}"  # noqa: E731
     nodes, edges = [], []
     for n in ex["nodes"]:
@@ -40,7 +40,7 @@ def _tag(project: Project, ex: dict, warnings: list[str]) -> dict:
             n["source_file"] = Path(src).resolve().relative_to(project.path).as_posix() if Path(src).is_absolute() else src
         except ValueError:
             pass
-        n["id"], n["project"], n["domain"], n["kind"] = pre(n["id"]), project.name, d.name, _kind(n)
+        n["id"], n["project"], n["area"], n["kind"] = pre(n["id"]), project.name, d.name, _kind(n)
         tags = []
         # LLM items carry their own stage tags; path rules only fill in when the LLM gave none.
         # memory nodes are not lifecycle artifacts, so path rules must not tag them either
@@ -49,7 +49,7 @@ def _tag(project: Project, ex: dict, warnings: list[str]) -> dict:
             if t in d.stages:
                 tags.append(t)
             else:
-                warnings.append(f"{n['source_file']}: unknown stage tag {t!r} for domain {d.name!r} (ignored)")
+                warnings.append(f"{n['source_file']}: unknown stage tag {t!r} for area {d.name!r} (ignored)")
         n["stages"] = list(dict.fromkeys(tags))
         nodes.append(n)
         for t in n["stages"]:
@@ -61,7 +61,7 @@ def _tag(project: Project, ex: dict, warnings: list[str]) -> dict:
         edges.append({**e, "source": pre(e["source"]), "target": pre(e["target"])})
     used = sorted({t for n in nodes for t in n["stages"]})
     nodes.append({"id": pid, "label": project.name, "file_type": "concept", "source_file": str(project.path),
-                  "kind": "project", "project": project.name, "domain": d.name, "stages": used})
+                  "kind": "project", "project": project.name, "area": d.name, "stages": used})
     edges += [{"source": pid, "target": d.stage_node(t), "relation": "participates_in",
                "confidence": "EXTRACTED", "source_file": str(project.path)} for t in used]
     return {"nodes": nodes, "edges": edges, "hyperedges": []}
@@ -95,9 +95,9 @@ def _resolve_refs(projects: list[Project], refs: list[tuple[Project, dict]], ext
 
 
 def derive_flow_edges(M: nx.MultiDiGraph, ws: Workspace) -> int:
-    """Lift structural edges (imports/calls) to file level and add the domain's flow relation as INFERRED,
+    """Lift structural edges (imports/calls) to file level and add the area's flow relation as INFERRED,
     e.g. a test file importing a code file -> `verifies`. Generic: driven by flow_relations."""
-    domains = ws.domains
+    areas = ws.areas
     file_of = {(d["project"], d["source_file"]): n for n, d in M.nodes(data=True) if d.get("kind") == "file"}
     lift = lambda n: file_of.get((M.nodes[n].get("project"), M.nodes[n].get("source_file")))  # noqa: E731
     have = {(u, v, d.get("relation")) for u, v, d in M.edges(data=True)}
@@ -106,9 +106,9 @@ def derive_flow_edges(M: nx.MultiDiGraph, ws: Workspace) -> int:
         if d.get("relation") not in STRUCTURAL_RELATIONS:
             continue
         fu, fv = lift(u), lift(v)
-        if not fu or not fv or fu == fv or M.nodes[fu]["domain"] != M.nodes[fv]["domain"]:
+        if not fu or not fv or fu == fv or M.nodes[fu]["area"] != M.nodes[fv]["area"]:
             continue
-        dom = domains[M.nodes[fu]["domain"]]
+        dom = areas[M.nodes[fu]["area"]]
         for r in dom.flow_relations:
             if r["from"] in M.nodes[fu]["stages"] and r["to"] in M.nodes[fv]["stages"] and (fu, fv, r["relation"]) not in have:
                 have.add((fu, fv, r["relation"]))
@@ -120,7 +120,7 @@ def derive_flow_edges(M: nx.MultiDiGraph, ws: Workspace) -> int:
 
 def _adopt_externals(G: nx.Graph, ws: Workspace) -> None:
     """graphify adds stub nodes for unresolved imports (os, fastapi, ...). Keep them as `external`
-    dependency nodes owned by the importing project, so every node has a kind/project/domain."""
+    dependency nodes owned by the importing project, so every node has a kind/project/area."""
     by_name = {p.name: p for p in ws.projects}
     for n, d in G.nodes(data=True):
         if "kind" in d:
@@ -128,7 +128,7 @@ def _adopt_externals(G: nx.Graph, ws: Workspace) -> None:
         proj, _, name = n.partition(":")
         p = by_name.get(proj)
         d.update(kind="external", label=name or n, stages=[], project=proj,
-                 domain=p.domain.name if p else "unknown")
+                 area=p.area.name if p else "unknown")
 
 
 def knowledge_layer(G: nx.Graph) -> nx.Graph:
@@ -150,7 +150,7 @@ def build_workspace(ws: Workspace, *, semantic: bool = False, progress=None) -> 
 def _build_workspace(ws: Workspace, semantic: bool, prog) -> tuple[nx.MultiDiGraph, dict, list[str]]:
     warnings: list[str] = []
     prog.begin(len(ws.projects), semantic)
-    extractions = [d.process_extraction() for d in ws.domains.values()]
+    extractions = [d.process_extraction() for d in ws.areas.values()]
     refs: list[tuple[Project, dict]] = []
     project_exs = []
     for i, p in enumerate(ws.projects, 1):
@@ -178,16 +178,18 @@ def _build_workspace(ws: Workspace, semantic: bool, prog) -> tuple[nx.MultiDiGra
         warnings += merge_layers(M, ws, store)
     if store:
         store.close()
+    from .migrate import FORMAT
+    M.graph["workgraph_format"] = FORMAT          # a graph.json without it was built by 0.2.x: query.load_graph asks for a rebuild
     return M, communities, warnings
 
 
 def stage_summary(G: nx.Graph) -> dict[str, dict[str, dict[str, int]]]:
-    """{domain: {stage: {project: artifact_count}}}; multi-tagged artifacts count under each stage."""
+    """{area: {stage: {project: artifact_count}}}; multi-tagged artifacts count under each stage."""
     out: dict = {}
     for _, d in G.nodes(data=True):
         if d.get("kind") in STRUCTURAL_KINDS:
             continue
         for s in d.get("stages", []):
-            c = out.setdefault(d["domain"], {}).setdefault(s, {})
+            c = out.setdefault(d["area"], {}).setdefault(s, {})
             c[d["project"]] = c.get(d["project"], 0) + 1
     return out

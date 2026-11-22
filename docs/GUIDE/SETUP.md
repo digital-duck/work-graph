@@ -86,13 +86,13 @@ The extras (combine as needed, for example `".[dev,bedrock]"`):
 
 ```bash
 which workgraph
-workgraph utils domains
+workgraph utils areas
 
 # alias
 ln -s $HOME/anaconda3/envs/graf/bin/workgraph ./wg
 which wg
 
-wg utils domains
+wg utils areas
 ```
 
 Expected:

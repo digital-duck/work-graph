@@ -18,7 +18,7 @@ from graphify.extract import collect_files, extract
 
 from . import paths
 from .progress import current
-from .domain import Processor, Project, glob_match, make_id
+from .area import Processor, Project, glob_match, make_id
 from .cc_cli import BackendLimitError
 from .claude_import import p_claude_memory
 from .llm import complete, resolve_backend
@@ -40,7 +40,7 @@ def _ignore_patterns(project: Project) -> list[tuple[Path, str]]:
     if gi.exists():
         pats += [(project.path, ln) for raw in gi.read_text(errors="replace").splitlines()
                  if (ln := _parse_gitignore_line(raw))]
-    return pats + [(project.path, g) for g in project.domain.ignore + project.ignore]
+    return pats + [(project.path, g) for g in project.area.ignore + project.ignore]
 
 
 def walk_project(project: Project) -> list[Path]:
@@ -102,7 +102,7 @@ def p_ast(project: Project, files: list[Path], proc: Processor) -> dict:
 
 def p_frontmatter(project: Project, files: list[Path], proc: Processor) -> dict:
     """Markdown -> one node per file. Frontmatter supplies id/title/kind/stages and relation edges."""
-    out, relations = _empty(), project.domain.relation_names
+    out, relations = _empty(), project.area.relation_names
     for f in files:
         rel = _rel(project, f)
         text = f.read_text(encoding="utf-8", errors="replace")
@@ -132,7 +132,7 @@ _ANNOT = re.compile(r"^\s*(?:#|//|--|/?\*+)\s*@?([A-Za-z_]+)\s*:\s*(.+?)\s*$")
 
 def p_annotations(project: Project, files: list[Path], proc: Processor) -> dict:
     """`# verifies: REQ-001` style comments in any text file -> explicit edges from that file."""
-    out, relations = _empty(), project.domain.relation_names
+    out, relations = _empty(), project.area.relation_names
     for f in files:
         rel = _rel(project, f)
         try:
@@ -174,7 +174,7 @@ def p_llm(project: Project, files: list[Path], proc: Processor) -> dict:
     return out
 
 
-_ITEMS_PROMPT = """You read ONE document from a {domain} project and extract its discrete work items.
+_ITEMS_PROMPT = """You read ONE document from a {area} project and extract its discrete work items.
 
 Allowed item kinds: {kinds}
 Allowed stages (lifecycle tags, use only these ids): {stages}
@@ -217,18 +217,18 @@ def _json_object(raw: str) -> dict:
 
 
 def p_llm_items(project: Project, files: list[Path], proc: Processor) -> dict:
-    """Domain-prompted extraction: prose docs -> typed work items (INFERRED, origin=llm).
+    """Area-prompted extraction: prose docs -> typed work items (INFERRED, origin=llm).
 
-    Uses graphify's backend dispatcher (`_call_llm`) but our own prompt, built from the domain pack's
+    Uses graphify's backend dispatcher (`_call_llm`) but our own prompt, built from the area pack's
     vocabulary. Results are cached by prompt hash in <home>/cache, so reruns cost nothing."""
-    d, out = project.domain, _empty()
+    d, out = project.area, _empty()
     backend = resolve_backend(None, project.backend, proc.backend)
     kinds = proc.kinds or ["requirement", "decision", "task"]
     flow = "; ".join(f"{s.id}->{','.join(s.next)}" for s in d.stages.values())
     for n, f in enumerate(files, 1):
         rel = _rel(project, f)
         text = f.read_text(encoding="utf-8", errors="replace")[:_MAX_DOC_CHARS]
-        prompt = _ITEMS_PROMPT.format(domain=d.name, kinds=", ".join(kinds), stages=", ".join(d.stages), flow=flow,
+        prompt = _ITEMS_PROMPT.format(area=d.name, kinds=", ".join(kinds), stages=", ".join(d.stages), flow=flow,
                                       max_items=_MAX_ITEMS, path=rel, text=text)
         cache = _cache_dir() / f"llm_items-{hashlib.sha256((backend + prompt).encode()).hexdigest()[:24]}.json"
         if cache.exists():
@@ -268,18 +268,18 @@ STEP_LABELS = {"ast": "code (tree-sitter)", "frontmatter": "documents", "annotat
 
 
 def run_processors(project: Project, *, semantic: bool = False, steps: list | None = None) -> dict:
-    """Run every processor of the project's domain and merge the results. `steps` collects
+    """Run every processor of the project's area and merge the results. `steps` collects
     (label, seconds, files) per step, for progress and timing."""
     t = time.perf_counter()
     all_files = walk_project(project)
     if steps is not None:
         steps.append(("scan files", time.perf_counter() - t, len(all_files)))
     merged = _empty()
-    for proc in project.domain.processors:
+    for proc in project.area.processors:
         if proc.use in ("llm", "llm_items") and not semantic:
             continue
         if proc.use not in REGISTRY:
-            raise ValueError(f"[{project.domain.name}] processor {proc.name!r} uses unknown processor {proc.use!r}")
+            raise ValueError(f"[{project.area.name}] processor {proc.name!r} uses unknown processor {proc.use!r}")
         files = [f for f in all_files if not proc.match or glob_match(_rel(project, f), proc.match)]
         if proc.use in ("llm", "llm_items") and files:
             current().note(f"LLM extraction: {len(files)} document{'s' if len(files) != 1 else ''}, one call each (cached ones are instant) ...")
