@@ -6,8 +6,6 @@ import json
 import math
 import os
 import re
-import urllib.error
-import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
@@ -161,30 +159,21 @@ def embed_model() -> str:
     return os.environ.get("WORKGRAPH_EMBED_MODEL", "nomic-embed-text")
 
 
-def _ollama_post(path: str, body: dict, timeout: int = 120) -> dict:
-    req = urllib.request.Request(_ollama_url() + path, json.dumps(body).encode(), {"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read())
+def _adapter(backend: str):
+    """The dd-embed adapter behind a workgraph embedding backend: `ollama` (a local server; `WORKGRAPH_EMBED_MODEL`, `OLLAMA_HOST`) or
+    `sbert` (sentence-transformers, CPU unless `WORKGRAPH_EMBED_DEVICE` says otherwise: the model is small, and a PyTorch build without kernels for an older GPU would fail)."""
+    from dd_embed import get_adapter
+    if backend == "ollama":
+        return get_adapter("ollama", model_name=embed_model(), host=_ollama_url())
+    return get_adapter("sentence_transformers", model_name="all-MiniLM-L6-v2", device=os.environ.get("WORKGRAPH_EMBED_DEVICE", "cpu"))
 
 
 def ollama_ready() -> tuple[bool, str]:
-    try:
-        with urllib.request.urlopen(_ollama_url() + "/api/tags", timeout=3) as r:
-            names = [m["name"] for m in json.loads(r.read()).get("models", [])]
-    except (OSError, ValueError, urllib.error.URLError):
-        return False, "ollama is not running"
-    m = embed_model()
-    if not any(n == m or n.startswith(m + ":") for n in names):
-        return False, f"ollama has no embedding model {m!r} (run `ollama pull {m}`)"
-    return True, m
+    return _adapter("ollama").ready()
 
 
 def sbert_ready() -> tuple[bool, str]:
-    try:
-        import sentence_transformers  # noqa: F401
-        return True, "all-MiniLM-L6-v2"
-    except Exception as e:                      # missing, or broken numpy/torch build
-        return False, f"sentence-transformers unavailable ({type(e).__name__})"
+    return _adapter("sbert").ready()
 
 
 def available_backends() -> dict[str, tuple[bool, str]]:
@@ -260,15 +249,13 @@ def semantic_search(docs: list[Doc], query: str, limit: int = 25, backend: str =
             notes.append(detail)
             continue
         texts = [d.text for d in docs]
-        if b == "ollama":
-            model = detail
-            embed = lambda batch: _ollama_post("/api/embed", {"model": model, "input": batch})["embeddings"]  # noqa: E731
-        else:
-            from sentence_transformers import SentenceTransformer
-            model = detail
-            # CPU by default: the model is small, and a PyTorch build without kernels for an older GPU would fail.
-            st = SentenceTransformer(model, device=os.environ.get("WORKGRAPH_EMBED_DEVICE", "cpu"))
-            embed = lambda batch: st.encode(batch, show_progress_bar=False).tolist()  # noqa: E731
+        model, adapter = detail, _adapter(b)
+
+        def embed(batch, adapter=adapter):
+            res = adapter.embed(batch)
+            if not res.success:
+                raise RuntimeError(f"embedding failed ({res.provider}): {res.error}")
+            return res.embeddings.tolist()
         vecs = _embed_cached(texts, b, model, embed)
         qv = embed([query])[0]
         scores = [_cosine(qv, v) for v in vecs]

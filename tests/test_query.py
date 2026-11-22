@@ -58,20 +58,49 @@ def test_semantic_tfidf_fallback_is_labelled(built, monkeypatch):
 
 
 def test_semantic_ollama_path_uses_cache(built, monkeypatch):
+    import numpy as np
+    from dd_embed import EmbeddingAdapter, EmbeddingResult
     _, docs = built
     calls = []
 
-    def fake_post(path, body, timeout=120):
-        calls.append(len(body["input"]))
-        return {"embeddings": [[float(len(t) % 7), float(len(t.split())), 1.0] for t in body["input"]]}
+    class Fake(EmbeddingAdapter):
+        def embed(self, texts, **kw):
+            calls.append(len(texts))
+            return EmbeddingResult(np.array([[float(len(t) % 7), float(len(t.split())), 1.0] for t in texts]), True, "ollama", "fake-embed")
 
     monkeypatch.setattr(query, "ollama_ready", lambda: (True, "fake-embed"))
-    monkeypatch.setattr(query, "_ollama_post", fake_post)
+    monkeypatch.setattr(query, "_adapter", lambda backend: Fake())
     hits, used, note = query.semantic_search(docs, "cart", 3)
     assert used == "ollama" and "fake-embed" in note and len(hits) == 3
     first = sum(calls)
     query.semantic_search(docs, "cart", 3)
     assert sum(calls) - first == 1                                       # only the query is embedded the second time
+
+
+def test_embedding_backends_are_dd_embed_adapters(monkeypatch):
+    monkeypatch.setenv("WORKGRAPH_EMBED_MODEL", "my-embed")
+    monkeypatch.setenv("OLLAMA_HOST", "http://box:11434")
+    a = query._adapter("ollama")
+    assert (a.model_name, a.host) == ("my-embed", "http://box:11434")
+    s = query._adapter("sbert")
+    assert s.model_name == "all-MiniLM-L6-v2" and s.device == "cpu"
+    monkeypatch.setenv("WORKGRAPH_EMBED_DEVICE", "cuda")
+    assert query._adapter("sbert").device == "cuda"
+
+
+def test_a_failed_embedding_is_an_error_not_a_silent_fallback(built, monkeypatch):
+    import numpy as np
+    from dd_embed import EmbeddingAdapter, EmbeddingResult
+    _, docs = built
+
+    class Broken(EmbeddingAdapter):
+        def embed(self, texts, **kw):
+            return EmbeddingResult(np.empty((0, 0)), False, "ollama", "m", error="boom")
+
+    monkeypatch.setattr(query, "ollama_ready", lambda: (True, "m"))
+    monkeypatch.setattr(query, "_adapter", lambda backend: Broken())
+    with pytest.raises(RuntimeError, match="boom"):
+        query.semantic_search(docs, "cart", 3, backend="ollama")
 
 
 def test_summary_neighbors_dot_and_gaps(built):

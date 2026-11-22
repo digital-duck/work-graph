@@ -271,7 +271,7 @@ src/workgraph/
   syncing.py       # export/import tar.gz, sync through a private git repo, privacy guards
   claude_import.py # Claude Code memory processor and import-claude
   claude_code.py   # Claude Code hooks: workgraph as the memory of your sessions
-  query.py         # load, keyword search, semantic search (ollama / sentence-transformers / TF-IDF), neighbourhoods
+  query.py         # load, keyword search, semantic search (dd-embed adapters: ollama / sentence-transformers, else TF-IDF), neighbourhoods
   ui/streamlit/    # Streamlit app (`workgraph ui`); one folder per UI framework under ui/
   data/            # packaged copy of the /workgraph command
 plugin/            # Claude Code plugin: hooks + the /workgraph command (not published; draft marketplace file in docs/DEV/)

@@ -31,7 +31,7 @@ dependencies = [
     "zinet>=0.2.0",             # graph drawing (workgraph viz, the Map tab) and the comment-preserving YAML
     "pyyaml",
     "streamlit",                # workgraph ui
-    "sentence-transformers",    # workgraph search --semantic (pulls in PyTorch)
+    "dd-embed[sentence-transformers,ollama]>=0.1.0",   # workgraph search --semantic: the embedding adapters shared with other projects (pulls in PyTorch)
 ]
 
 [project.urls]

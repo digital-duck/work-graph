@@ -1,7 +1,7 @@
 # Refactoring work-graph with GraphLang (plan)
 
 Date: 2026-11-22
-Status: plan, decisions recorded in section 8. **Phases 0b (the rename), 1 (the LLM seam) and 2 (`llm_items` as a recipe) 3 (`workgraph ask`) and 4 (GraphLang files) are done** (2026-11-22, commits `1e15f42` and `0ed9099`); the other phases are not started. Nothing here is done. Written after reading the work-graph tree (`CLAUDE.md`, `README.md`, `pipeline.py`, `processors.py`,
+Status: plan, decisions recorded in section 8. **Phases 0b (the rename), 1 (the LLM seam) and 2 (`llm_items` as a recipe) 3 (`workgraph ask`), 4 (GraphLang files) and 5 (embeddings) are done** (2026-11-22, commits `1e15f42` and `0ed9099`); the other phases are not started. Nothing here is done. Written after reading the work-graph tree (`CLAUDE.md`, `README.md`, `pipeline.py`, `processors.py`,
 `llm.py`, `cc_cli.py`, `query.py`, `pyproject.toml`) and the parts of GraphLang and dd-llm it would touch. What was read and what was not is
 marked; "verify" means a step the plan depends on but nobody has checked yet.
 
@@ -138,9 +138,19 @@ What needs a migration, because work-graph 0.2.0 is on PyPI and people have home
 - 4 tests on a small made-up project (every node kind and edge, the warnings, the gap rules, opt-in: `publishing` gets none). 122 pass.
 - **Not done:** the optional use of GraphLang's loader for exact flattened facts (cost, capabilities); `ask` and the UI do not yet know the new kinds specially (they show up as ordinary nodes).
 
-### Phase 5: embeddings through dd-embed (decided: do it now)
+### Phase 5: embeddings through dd-embed (DONE 2026-11-22)
 
 - Replace the ollama/sbert/TF-IDF code in `query.py` with dd-embed, keeping the `auto` fallback order and the cache in `<home>/cache/embeddings`. Check first that dd-embed has the same fallback and cache behaviour (verify); if it lacks something, add it to dd-embed. This phase does not depend on 2 to 4: it can run any time after Phase 0, and it is the better one to do second, because it also needs only a shared library and has a clear test (the same rankings on `examples/`).
+
+
+**Result of Phase 5:**
+
+- `query._adapter(backend)` returns the dd-embed adapter (`ollama`: model from `WORKGRAPH_EMBED_MODEL`, host from `OLLAMA_HOST`; `sbert`: `all-MiniLM-L6-v2` on CPU unless `WORKGRAPH_EMBED_DEVICE`); `ollama_ready()` and `sbert_ready()` stay as one-line calls of `adapter.ready()`; the `auto` order (ollama, sbert, TF-IDF), the notes, and the cache are as before. `dd-embed[sentence-transformers,ollama]` is a core dependency.
+- **Checked first, as the plan said; what dd-embed lacked, and what was done in dd-embed (commits `da12ecf`, one more):** no readiness check (added `ready()` to the base class, ollama and sentence-transformers); the Ollama adapter made one request per text and silently dropped an unusable vector, which would shift every later text onto the wrong vector (now: one batch request when the server supports it, else per text, and a bad vector keeps its row); no `ollama` extra for `requests`. dd-embed tests: 33 pass.
+- **Not taken from dd-embed, on purpose:** its `EmbeddingCache` is a pickle keyed by the full text; workgraph's cache is JSON keyed by a content hash under `<home>/cache/embeddings`, which is safe to sync between machines. Say if you want it moved anyway.
+- **Checked:** `search --semantic` on `examples/` with the real models, old code against new: identical rankings and scores for `sbert` (2 queries) and for `ollama` with `qwen3-embedding:0.6b` (this machine's model; `nomic-embed-text` is the default name). 125 workgraph tests pass.
+- **Found on the way:** a test that failed about one run in four was a real bug: every export stamped a new time into the sync manifest, so a no-change `sync push` made a commit when the clock's second had changed. Fixed, with a deterministic test.
+- Other dd-embed providers (openai, gemini, voyage, huggingface) are not offered as backends yet: the `--backend` choices are still auto, ollama, sbert, tfidf. It is one entry in `_adapter` and the choices list if you want one.
 
 ## 4. What does not change
 

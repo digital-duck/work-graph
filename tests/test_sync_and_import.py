@@ -258,3 +258,17 @@ def test_a_sync_tree_from_the_older_workgraph_is_refused_whole_with_what_to_do(t
     with Store(tmp_path / "db.sqlite3") as store, pytest.raises(SyncError) as e:
         import_tree(tree, store)
     assert "newer workgraph" in str(e.value)
+
+
+def test_an_export_with_nothing_new_keeps_the_manifest_time(tmp_path, monkeypatch):
+    """Otherwise every `sync push` would be a commit, whenever the clock's second had changed since the last one."""
+    from workgraph import syncing
+    from workgraph.store import Store
+    ticks = iter(["2026-01-01T00:00:01+0000", "2026-01-01T00:00:09+0000", "2026-01-01T00:00:20+0000"])
+    monkeypatch.setattr(syncing.time, "strftime", lambda fmt: next(ticks))
+    with Store(tmp_path / "db.sqlite3") as store:
+        dest = tmp_path / "tree"
+        syncing.export_tree(dest, {"workspace"}, store)
+        first = (dest / "manifest.json").read_text(encoding="utf-8")
+        syncing.export_tree(dest, {"workspace"}, store)
+        assert (dest / "manifest.json").read_text(encoding="utf-8") == first

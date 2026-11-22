@@ -139,6 +139,10 @@ def _domain_of_graph_file(f: Path) -> str | None:
 def export_tree(dest: Path, parts: set[str], store: Store) -> dict:
     """Write the sync tree into `dest`, replacing what a previous export put there (and nothing else)."""
     dest.mkdir(parents=True, exist_ok=True)
+    try:
+        previous = json.loads((dest / "manifest.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        previous = None
     for name in MANAGED:
         t = dest / name
         shutil.rmtree(t) if t.is_dir() else t.unlink(missing_ok=True)
@@ -171,9 +175,10 @@ def export_tree(dest: Path, parts: set[str], store: Store) -> dict:
             (dest / "cache" / "llm").mkdir(parents=True, exist_ok=True)
             shutil.copy2(f, dest / "cache" / "llm" / f.name)
         counts["llm cache files"] = len(files)
-    (dest / "manifest.json").write_text(json.dumps(
-        {"format": FORMAT, "created": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "parts": sorted(parts), "counts": counts},
-        indent=2) + "\n", encoding="utf-8")
+    manifest = {"format": FORMAT, "created": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "parts": sorted(parts), "counts": counts}
+    if isinstance(previous, dict) and {k: v for k, v in previous.items() if k != "created"} == {k: v for k, v in manifest.items() if k != "created"}:
+        manifest["created"] = previous.get("created", manifest["created"])        # nothing else changed since the last export: keep its time, or every push would be a commit
+    (dest / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     problems = guard_tree(dest)
     if problems:
         raise SyncError("refusing to export, nothing leaves this machine:\n  " + "\n  ".join(problems))
