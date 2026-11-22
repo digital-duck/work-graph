@@ -488,7 +488,7 @@ The sections of a pack:
 | `expectations` | the gap rules: "artifacts of these kinds in this stage need an incoming/outgoing edge of this relation" |
 | `classifiers` | path globs that assign stage tags (case-insensitive; every matching rule adds a tag; `default: true` applies when none matched) |
 | `ignore` | default noise patterns |
-| `processors` | which file types go through which processor: `ast` (code), `frontmatter` (markdown), `annotations` (code comments), `llm_items` and `llm` (need `--semantic`) |
+| `processors` | which file types go through which processor: `ast` (code), `frontmatter` (markdown), `annotations` (code comments), `llm_items` and `llm` (need `--semantic`). `llm_items` may carry `prompt:` (a prompt file of your own) or `recipe:` (a GraphLang recipe of your own); see the README, "LLM work items" |
 
 Example: treat `docs/specs/` as requirements and require every requirement to have an owner link:
 

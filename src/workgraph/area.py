@@ -71,6 +71,8 @@ class Processor:
     match: list[str] = field(default_factory=list)
     backend: str | None = None
     kinds: list[str] = field(default_factory=list)   # item kinds for the llm_items processor
+    prompt: str | None = None    # llm_items: a prompt file of your own (name in <home>/custom/prompts/, or a path) in place of the recipe's
+    recipe: str | None = None    # llm_items: a recipe of your own (a folder in <home>/custom/recipes/) in place of the shipped `extract_items`
 
 
 @dataclass
@@ -97,7 +99,7 @@ class Area:
             name=legacy_key(raw, "area", "domain", f"area pack {p.name}"), label=raw.get("label", legacy_key(raw, "area", "domain", f"area pack {p.name}")), stages=stages,
             flow_relations=raw.get("flow_relations", []), expectations=raw.get("expectations", []),
             classifiers=raw.get("classifiers", []), ignore=raw.get("ignore", []),
-            processors=[Processor(x["name"], x["use"], x.get("match", []), x.get("backend"), x.get("kinds", []))
+            processors=[Processor(x["name"], x["use"], x.get("match", []), x.get("backend"), x.get("kinds", []), x.get("prompt"), x.get("recipe"))
                         for x in raw.get("processors", [])],
         )
         d._check()
@@ -259,6 +261,17 @@ def validate_pack(name_or_path: str | Path) -> list[str]:
         for key in ("match", "kinds"):
             if key in pr and not isinstance(pr[key], list):
                 errs.append(f"processors[{i}] ({pr['name']}): `{key}` must be a list")
+        for key in ("prompt", "recipe"):
+            if key in pr:
+                if pr["use"] != "llm_items":
+                    errs.append(f"processors[{i}] ({pr['name']}): `{key}` belongs to `use: llm_items`")
+                elif not isinstance(pr[key], str):
+                    errs.append(f"processors[{i}] ({pr['name']}): `{key}` must be a name")
+                else:
+                    from . import recipes
+                    problem = recipes.check_recipe(pr[key]) if key == "recipe" else recipes.check_prompt(pr[key])
+                    if problem:
+                        errs.append(f"processors[{i}] ({pr['name']}): {problem}")
 
     if "ignore" in raw and not (isinstance(raw["ignore"], list) and all(isinstance(g, str) for g in raw["ignore"])):
         errs.append("`ignore` must be a list of glob strings")

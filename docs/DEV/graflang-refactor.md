@@ -1,7 +1,7 @@
 # Refactoring work-graph with GraphLang (plan)
 
 Date: 2026-11-22
-Status: plan, decisions recorded in section 8. **Phases 0b (the rename) and 1 (the LLM seam) are done** (2026-11-22, commits `1e15f42` and `0ed9099`); the other phases are not started. Nothing here is done. Written after reading the work-graph tree (`CLAUDE.md`, `README.md`, `pipeline.py`, `processors.py`,
+Status: plan, decisions recorded in section 8. **Phases 0b (the rename), 1 (the LLM seam) and 2 (`llm_items` as a recipe) are done** (2026-11-22, commits `1e15f42` and `0ed9099`); the other phases are not started. Nothing here is done. Written after reading the work-graph tree (`CLAUDE.md`, `README.md`, `pipeline.py`, `processors.py`,
 `llm.py`, `cc_cli.py`, `query.py`, `pyproject.toml`) and the parts of GraphLang and dd-llm it would touch. What was read and what was not is
 marked; "verify" means a step the plan depends on but nobody has checked yet.
 
@@ -90,13 +90,23 @@ What needs a migration, because work-graph 0.2.0 is on PyPI and people have home
 - **Behaviour changes** (all in the CHANGELOG): `claude-cli` now means `cc_cli` (subscription-safe; graphify's own name billed the API when a key was set); `kimi` is gone (no dd-llm adapter); an image given to `use: llm` goes in as text, as it already did under `cc_cli` (graphify's direct path sent pixels to vision backends); new `WORKGRAPH_MODEL`, the old model variables still work.
 - **Checked:** `tests/test_cc_cli.py` became `tests/test_llm.py` (subprocess-level: stdin, tools off, stripped variables, model and timeout from the environment, a limit stops without retry, launch retry but no timeout retry, the `echo` adapter); the stubbed `--semantic` test gives the same items; one real haiku call through `cc_cli` answered; `utils show-llm` runs. Suite: 101 pass, none fail.
 
-### Phase 2: `llm_items` as a recipe
+### Phase 2: `llm_items` as a recipe (DONE 2026-11-22)
 
 - `src/workgraph/recipes/extract_items/`: `extract_items.graph.yaml`, `prompts/extract.md` (today's `_ITEMS_PROMPT`, with the domain, kinds, stages and flow as inputs), a small parse-and-check tool (the existing `_json_object` plus a filter to allowed kinds and stages), error exit `limit` for a quota stop. Shipped as package data (`package-data` in `pyproject.toml`).
 - `p_llm_items` runs it per document through `graphlang.grafr.runtime` with `limits.max_llm_calls`, and keeps the **cache** itself (keyed by backend and prompt hash, as now), so a rerun still costs nothing. **Customization (decided):** a domain pack's processor may name its own prompt file (`prompt:`) or its own recipe (`recipe:`), and a user's `custom/` folder in the home folder can hold both, looked up by name and overriding the shipped ones, as `custom/domains/` already does for packs. The shipped prompt and recipe are the defaults. A custom recipe must keep the interface (inputs: the document, the domain pack's name, kinds, stages and flow; output: the items JSON text); `workgraph utils validate-pack` checks the names and `graf validate` the recipe.
 - **Must handle:** GraphLang writes `.graf/` (outputs, nodes) beside the graph by default; inside an installed package that is a read-only folder. Run with the outputs switched off or redirected to `<home>/cache` (the CLI has `--no-output --no-save-nodes`; the library call needs the same, **verify**), and log through the existing progress object, not a new log folder.
 - **Measure before switching:** start-up cost of building the runtime per document. If it is not negligible, build it once per project and run the graph once per document (or with a `BATCH` node). Keep the old Python path behind an environment switch until the output matches on `acme-shop` and `rq-demo`.
 - Tests: a scripted-model test of the recipe (GraphLang's tests show the pattern: a small object with `generate(prompt)` answering by what the prompt asks), including a reply with chatter around the JSON, an unknown kind, and a limit.
+
+**Result of Phase 2:**
+
+- `src/workgraph/recipes/extract_items/` (graph, `prompts/extract.md`, `tools/parse_items.py`) and `recipes/__init__.py` (`Recipe`: load once, deep-copy and run per document; `SeamLLM`: the model GraphLang calls is `llm.complete`, so billing rules, backends and `BackendLimitError` are the same as everywhere; `recipe_path`, `check_recipe`, `check_prompt`). Shipped as package data. `graflang>=0.2.1` is a core dependency.
+- **Measured:** loading the graph takes 0.2 s once per process; a run on a loaded graph takes 27 ms including the parser subprocess, against several seconds for the model call. So no batching, and no per-project runtime.
+- **Handled:** no `.graf/` or log folder is written (the library call has no `RunOutput` unless given one, and logging is off until `setup_logging`); a backend limit passes through the runtime unchanged and still stops the pass with the same warning; `limits.max_llm_calls` is 2 per document.
+- **Customization (decided in Q3):** processor keys `prompt:` and `recipe:`, folders `<home>/custom/prompts/` and `<home>/custom/recipes/` (a folder there wins over the shipped one); `validate-pack` checks the names and that a recipe loads and has the interface.
+- **Prompt placeholders** in a prompt file are `{{in_<name>}}` (a GraphLang rule: the port name), not `{{name}}`. The document text is the last input, so a document that itself contains `{{in_path}}` is not expanded (tested).
+- **Checked:** the recipe's prompt is byte-identical to the old `_ITEMS_PROMPT` output; scripted replies (chatter and a fence around the JSON, an unknown kind, an unknown stage, a non-mapping item, no JSON at all, a limit) give the same nodes on both paths; the cache serves a rerun; a custom recipe and a custom prompt win. A real haiku run on `acme-shop` through each path gave 37 nodes and 6 items each (the wording of items differs between two model calls, as it always does). 110 tests pass.
+- **Left:** `WORKGRAPH_LLM_ITEMS=python` and `_ITEMS_PROMPT` stay until you say the output is proven (remove them in one small commit). The cache key changed, so the first `--semantic` build after the upgrade re-extracts once. `rq-demo` was not run for real (its only LLM processor is `llm` on PDFs, not `llm_items`).
 
 ### Phase 3: `workgraph ask`
 

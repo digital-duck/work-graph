@@ -217,6 +217,19 @@ def _json_object(raw: str) -> dict:
         return {}
 
 
+_RECIPES: dict = {}
+
+
+def _items_recipe(proc: Processor):
+    """The recipe that extracts items for this processor (loaded once per process): its own `recipe:`, else the shipped `extract_items`;
+    its own `prompt:` replaces the recipe's prompt."""
+    from . import recipes
+    key = (proc.recipe or "extract_items", proc.prompt)
+    if key not in _RECIPES:
+        _RECIPES[key] = recipes.Recipe(key[0], prompt=key[1])
+    return _RECIPES[key]
+
+
 def p_llm_items(project: Project, files: list[Path], proc: Processor) -> dict:
     """Area-prompted extraction: prose docs -> typed work items (INFERRED, origin=llm).
 
@@ -226,22 +239,33 @@ def p_llm_items(project: Project, files: list[Path], proc: Processor) -> dict:
     backend = resolve_backend(None, project.backend, proc.backend)
     kinds = proc.kinds or ["requirement", "decision", "task"]
     flow = "; ".join(f"{s.id}->{','.join(s.next)}" for s in d.stages.values())
+    use_recipe = os.environ.get("WORKGRAPH_LLM_ITEMS", "recipe") != "python"      # "python": the old in-code path, kept until the output is proven equal
+    recipe = _items_recipe(proc) if use_recipe else None
     for n, f in enumerate(files, 1):
         rel = _rel(project, f)
         text = f.read_text(encoding="utf-8", errors="replace")[:_MAX_DOC_CHARS]
-        prompt = _ITEMS_PROMPT.format(area=d.name, kinds=", ".join(kinds), stages=", ".join(d.stages), flow=flow,
-                                      max_items=_MAX_ITEMS, path=rel, text=text)
-        cache = _cache_dir() / f"llm_items-{hashlib.sha256((backend + prompt).encode()).hexdigest()[:24]}.json"
+        if recipe:
+            inputs = {"area": d.name, "kinds": ", ".join(kinds), "stages": ", ".join(d.stages), "flow": flow,
+                      "max_items": str(_MAX_ITEMS), "path": rel, "text": text}
+            ident = backend + recipe.fingerprint + json.dumps(inputs, sort_keys=True)
+        else:
+            prompt = _ITEMS_PROMPT.format(area=d.name, kinds=", ".join(kinds), stages=", ".join(d.stages), flow=flow,
+                                          max_items=_MAX_ITEMS, path=rel, text=text)
+            ident = backend + prompt
+        cache = _cache_dir() / f"llm_items-{hashlib.sha256(ident.encode()).hexdigest()[:24]}.json"
         if cache.exists():
             items = json.loads(cache.read_text(encoding="utf-8"))
         else:
             current().note(f"LLM {n}/{len(files)}: {rel}")
             try:
-                items = _json_object(llm.complete(prompt, backend=backend, max_tokens=4096)).get("items", [])
+                if recipe:
+                    items = _json_object(recipe.run(inputs, backend=backend)["items"]).get("items", [])
+                else:
+                    items = _json_object(llm.complete(prompt, backend=backend, max_tokens=4096)).get("items", [])
             except BackendLimitError as e:
                 out["warnings"].append(f"{rel}: {e}; skipping remaining LLM documents (rerun later, results are cached)")
                 break
-            except RuntimeError as e:
+            except (RuntimeError, ValueError) as e:
                 out["warnings"].append(f"{rel}: LLM extraction failed ({e}); skipped")
                 continue
             cache.write_text(json.dumps(items), encoding="utf-8")

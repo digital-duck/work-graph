@@ -1,0 +1,31 @@
+version: "1.0-graph"
+workflow:
+  name: extract_items
+  description: Reads ONE document of a project and returns its discrete work items as JSON text. A model proposes them with the prompt in prompts/extract.md (built from the area pack's kinds, stages and flow); a program (tools/parse_items.py) takes the JSON out of the reply and keeps only the allowed kinds and stage tags.
+  inputs:
+    - {name: area, type: TEXT, description: the area pack's name}
+    - {name: kinds, type: TEXT, description: the allowed item kinds, comma separated}
+    - {name: stages, type: TEXT, description: the allowed stage ids, comma separated}
+    - {name: flow, type: TEXT, description: "the stages in flow order, as `id->next,next; ...`"}
+    - {name: max_items, type: TEXT, description: the most items to keep}
+    - {name: path, type: TEXT, description: the document's path in its project}
+    - {name: text, type: TEXT, description: the document's text}
+  outputs:
+    - {name: items, type: TEXT, description: 'JSON text {"items": [{title, kind, stages, status, summary}, ...]}'}
+resources:
+  prompts:
+    extract: ./prompts/extract.md
+steps:
+  - ask: {generate: prompts.extract, in: {area: $in.area, kinds: $in.kinds, stages: $in.stages, flow: $in.flow, max_items: $in.max_items, path: $in.path, text: $in.text}, out: reply, label: Propose the work items}
+  - parse:
+      node: SOLVE
+      in: {reply: ask.reply, kinds: $in.kinds, stages: $in.stages, max_items: $in.max_items}
+      ports: [trigger, complete, in_reply, in_kinds, in_stages, in_max_items, out_result]
+      out: result
+      backend: subprocess
+      command: ["python3", "-I", "tools/parse_items.py"]
+      out_type: JSON
+      timeout: 30
+      label: Keep the allowed items
+  - text: {solve: "json_get(@in_r, 'text')", in: {r: parse.result}, out: text}
+  - done: {output: {items: text.text}}

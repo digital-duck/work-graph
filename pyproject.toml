@@ -27,6 +27,7 @@ dependencies = [
     "graphifyy[sql]>=0.7.19",   # [sql]: tree-sitter grammar for .sql files
     "networkx",
     "dd-llm>=0.2.0",            # every LLM call: the adapters shared with GraphLang and SPL.py
+    "graflang>=0.2.1",          # the recipes (src/workgraph/recipes/): workflows as graphs, run by its runtime
     "zinet>=0.2.0",             # graph drawing (workgraph viz, the Map tab) and the comment-preserving YAML
     "pyyaml",
     "streamlit",                # workgraph ui
@@ -52,7 +53,7 @@ dev = ["pytest"]
 workgraph = "workgraph.cli:main"
 
 [tool.setuptools.package-data]
-workgraph = ["areas/*.yaml", "data/*.md"]
+workgraph = ["areas/*.yaml", "data/*.md", "recipes/*/*.yaml", "recipes/*/prompts/*.md", "recipes/*/tools/*.py"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

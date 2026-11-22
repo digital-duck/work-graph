@@ -125,7 +125,7 @@ Shipped packs (`src/workgraph/areas/`): **`sdlc`**, **`research`** (question →
 - **Annotations**: `# verifies: REQ-001` in any code file does the same.
 - **Derived**: a test file that imports a code file yields an `INFERRED` `verifies` edge, and the rule comes from the pack's `flow_relations` rather than from code.
 - **Gaps**: the pack's `expectations` ("every requirement needs a test") are evaluated as plain graph queries. Rules can skip trivial files (`min_symbols`, `exclude`), and broken references are reported too.
-- **LLM work items** (`--semantic`): the `llm_items` processor reads planning and design prose (roadmaps, todos, design notes) with the pack's own prompt and extracts requirements, decisions and tasks as `INFERRED` nodes (`origin: llm`, with `status: done|open`) tagged with the pack's stages. They link to their source document with `derived_from`, are cached by prompt hash, and don't trigger gap rules until confirmed.
+- **LLM work items** (`--semantic`): the `llm_items` processor reads planning and design prose (roadmaps, todos, design notes) with the pack's own prompt and extracts requirements, decisions and tasks as `INFERRED` nodes (`origin: llm`, with `status: done|open`) tagged with the pack's stages. They link to their source document with `derived_from`, are cached by prompt hash, and don't trigger gap rules until confirmed. The extraction is a [GraphLang](https://github.com/digital-duck/graflang) recipe, `src/workgraph/recipes/extract_items/` (a prompt, plus a small program that takes the JSON out of the reply and keeps only the pack's kinds and stages). To change it, give the processor `prompt: items.md` (a file in `<home>/custom/prompts/`, or a path; the prompt uses `{{in_area}}`, `{{in_kinds}}`, `{{in_stages}}`, `{{in_flow}}`, `{{in_max_items}}`, `{{in_path}}`, `{{in_text}}`) or `recipe: my_items` (a folder in `<home>/custom/recipes/`; it must take the inputs `area, kinds, stages, flow, max_items, path, text` and give the output `items`, JSON text `{"items": [...]}`). `workgraph utils validate-pack` checks both names.
 - **Cross-project links**: byte-identical files get `identical_to` and same-path files that differ get `variant_of`, so clones of a template across repos show up (`workgraph utils clones`).
 - **Ignore rules**: `.gitignore`, `.graphifyignore`, the pack's default `ignore:` (logs, locks, db files) and a per-project `ignore:` list in the workspace file.
 
@@ -245,6 +245,7 @@ src/workgraph/
   areas/*.yaml   # area packs: sdlc, research, publishing
   area.py        # Area / Workspace loading, stage-tag validation, path classifiers
   llm.py           # the LLM seam: backend resolution, billing labels, one `complete()` over dd-llm adapters (cc_cli at home, bedrock at work)
+  recipes/         # GraphLang recipes shipped with workgraph (extract_items) and `Recipe`, which runs one through the LLM seam
   processors.py    # processing domain: ast, frontmatter, annotations, llm, llm_items
   links.py         # cross-project identical_to / variant_of edges
   pipeline.py      # tag + link + derive flow edges + cluster (wraps graphify)
