@@ -114,10 +114,10 @@ Shipped packs (`src/workgraph/areas/`): **`sdlc`**, **`research`** (question →
 
 ### Graph model
 
-- **Process layer**: `stage:<area>:<id>` nodes joined by `precedes`, and `project:<name>` nodes joined to the stages they take part in.
-- **Knowledge layer**: artifacts (files, symbols, documents, and typed nodes such as requirements, decisions, questions and hypotheses) with a `kind`, a `project`, and `stages`, a **list of stage tags** validated against the pack's vocabulary. A node may carry several tags, such as `[requirement, design]`. Each tag is also an `in_stage` edge.
+- **Process nodes**: `stage:<area>:<id>` nodes joined by `precedes`, and `project:<name>` nodes joined to the stages they take part in.
+- **Knowledge nodes**: artifacts (files, symbols, documents, and typed nodes such as requirements, decisions, questions and hypotheses) with a `kind`, a `project`, and `stages`, a **list of stage tags** validated against the pack's vocabulary. A node may carry several tags, such as `[requirement, design]`. Each tag is also an `in_stage` edge.
 - Edges carry `relation` and `confidence`: `EXTRACTED` (explicit in source), `INFERRED` (derived or LLM-suggested), or `AMBIGUOUS`.
-- Analysis and clustering run on the knowledge layer only, because stage and project nodes are hubs that would skew them.
+- Analysis and clustering run on the knowledge nodes only, because stage and project nodes are hubs that would skew them.
 
 ### Explicit links, derived links, gaps
 

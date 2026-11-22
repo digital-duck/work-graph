@@ -142,7 +142,7 @@ class Area:
         return list(dict.fromkeys(tags))
 
     def process_extraction(self) -> dict:
-        """The process layer (stages + `precedes` flow) as a graphify extraction dict."""
+        """The process nodes (stages + `precedes` flow) as a graphify extraction dict."""
         nodes, edges = [], []
         for s in self.stages.values():
             nodes.append({"id": self.stage_node(s.id), "label": s.label, "file_type": "concept",

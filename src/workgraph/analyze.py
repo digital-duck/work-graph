@@ -1,4 +1,4 @@
-"""Area-rule analysis on the knowledge layer (pure NetworkX, no LLM)."""
+"""Area-rule analysis on the knowledge nodes (pure NetworkX, no LLM)."""
 from __future__ import annotations
 
 import networkx as nx

@@ -1,4 +1,4 @@
-"""Workspace build: process layer + per-project processors -> tagged, linked knowledge graph."""
+"""Workspace build: process nodes + per-project processors -> tagged, linked knowledge graph."""
 from __future__ import annotations
 
 import time
@@ -131,13 +131,13 @@ def _adopt_externals(G: nx.Graph, ws: Workspace) -> None:
                  area=p.area.name if p else "unknown")
 
 
-def knowledge_layer(G: nx.Graph) -> nx.Graph:
+def knowledge_nodes(G: nx.Graph) -> nx.Graph:
     """The graph without process nodes (stages/projects), which are hubs that would skew analysis."""
     return G.subgraph([n for n, d in G.nodes(data=True) if d.get("kind") not in ("stage", "project")])
 
 
 def build_workspace(ws: Workspace, *, semantic: bool = False, progress=None) -> tuple[nx.MultiDiGraph, dict, list[str]]:
-    """Returns (graph, communities, warnings). Communities are computed on the knowledge layer only.
+    """Returns (graph, communities, warnings). Communities are computed on the knowledge nodes only.
     `progress` (a progress.Progress) prints per-project progress and collects timings; the default prints nothing."""
     prog = progress or NullProgress()
     set_current(prog)
@@ -168,7 +168,7 @@ def _build_workspace(ws: Workspace, semantic: bool, prog) -> tuple[nx.MultiDiGra
         G = build(extractions, directed=True, dedup=False)
         _adopt_externals(G, ws)
     with prog.phase("clustering communities", "clustering"):
-        communities = cluster(knowledge_layer(G)) if knowledge_layer(G).number_of_nodes() else {}
+        communities = cluster(knowledge_nodes(G)) if knowledge_nodes(G).number_of_nodes() else {}
     M = nx.MultiDiGraph(G)  # multi-edges: a structural edge and a flow edge can join the same pair
     with prog.phase("linking (flow edges, clones)", "linking"):
         derive_flow_edges(M, ws)
