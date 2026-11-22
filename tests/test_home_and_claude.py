@@ -37,7 +37,7 @@ def test_build_uses_default_workspace_and_writes_to_home(capsys):
     track_project(EX / "acme-shop")
     main(["build"])
     assert (paths.out_dir() / "graph.json").exists()
-    assert "26 nodes" in capsys.readouterr().out
+    assert "31 nodes" in capsys.readouterr().out
 
 
 def test_src_local_path_and_url_helpers(capsys):
@@ -142,7 +142,7 @@ def test_relative_config_falls_back_to_the_home_workspace(tmp_path, monkeypatch,
     assert "lists no projects yet" in str(e.value)
     track_project(EX / "acme-shop")
     main(["build", "-c", "workspace.yaml"])                      # found in the home folder
-    assert "26 nodes" in capsys.readouterr().out
+    assert "31 nodes" in capsys.readouterr().out
 
 
 def test_legacy_graphs_folder_moves_into_custom(tmp_path):

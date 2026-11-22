@@ -27,7 +27,8 @@ expectations:
   - {stage: requirement, kinds: [requirement], needs: satisfies, direction: in, message: "requirement has no design"}
   - {stage: requirement, kinds: [requirement], needs: verifies,  direction: in, message: "requirement has no test"}
   - {stage: build,       kinds: [file],        needs: verifies,  direction: in, message: "code file has no test",
-     min_symbols: 1, exclude: ["**/__init__.py", "**/*.config.*", "**/scripts/**", "**/alembic/**", "**/*.sh", "**/setup.py", "**/conftest.py"]}
+     min_symbols: 1, exclude: ["**/__init__.py", "**/*.config.*", "**/scripts/**", "**/alembic/**", "**/*.sh", "**/setup.py", "**/conftest.py",
+                "**/*.yaml", "**/*.yml", "**/*.json", "**/*.toml", "**/*.cfg", "**/*.ini"]}   # config and data files are not code, whatever graphify parses
 
 # Path rules -> stage tags (case-insensitive). Every matching rule adds a tag; `default` applies if none matched.
 classifiers:

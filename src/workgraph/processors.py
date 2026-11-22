@@ -2,7 +2,9 @@
 (plus an optional `refs` list of unresolved cross-references the pipeline resolves later)."""
 from __future__ import annotations
 
+import contextlib
 import hashlib
+import io
 import json
 import os
 import re
@@ -87,9 +89,13 @@ def p_ast(project: Project, files: list[Path], proc: Processor) -> dict:
     base = Path(os.path.commonpath([f.parent for f in found])).resolve()
     # root pins the path anchor (graphify otherwise derives it from cache_root); cache_root keeps graphify's
     # cache out of the project and the current directory.
-    with warnings.catch_warnings():
+    chatter = io.StringIO()      # graphify prints its AST-cache statistics; a default build is quiet, so they go to the progress notes instead
+    with warnings.catch_warnings(), contextlib.redirect_stdout(chatter), contextlib.redirect_stderr(chatter):
         warnings.filterwarnings("ignore", message="stat index switched")   # we use one cache root per project on purpose
         out = extract(found, cache_root=paths.cache_dir() / "ast" / project.name, root=base)
+    for line in chatter.getvalue().splitlines():
+        if line.strip():
+            current().note(line.strip())
     out.setdefault("refs", [])
     # graphify reports paths relative to the files' common directory; make them project-relative.
     shift = base.relative_to(project.path)
