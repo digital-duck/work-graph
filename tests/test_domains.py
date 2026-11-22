@@ -194,4 +194,4 @@ def test_a_database_of_0_2_gets_its_layer_columns_renamed(tmp_path):
     con.close()
     with Store(db) as s:
         assert s.dump_node_ids(set()) == [{"uid": "u1", "id": "org:a", "domain": "org"}]
-        assert s.merge_node_ids([{"uid": "u2", "id": "org:b", "layer": "org"}]) == 1           # a sync record of 0.2.x
+        assert s.merge_node_ids([{"uid": "u2", "id": "org:b", "domain": "org"}]) == 1

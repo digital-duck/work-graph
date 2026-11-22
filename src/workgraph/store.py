@@ -131,7 +131,7 @@ class Store:
     def merge_node_ids(self, records: list[dict]) -> int:
         before = self.db.execute("SELECT COUNT(*) FROM node_ids").fetchone()[0]
         self.db.executemany("INSERT OR IGNORE INTO node_ids VALUES (?,?,?,?)",
-                            [(r["uid"], r["id"], r.get("domain", r.get("layer")), time.time()) for r in records])      # a record from 0.2.x says `layer`
+                            [(r["uid"], r["id"], r["domain"], time.time()) for r in records])
         self.db.commit()
         return self.db.execute("SELECT COUNT(*) FROM node_ids").fetchone()[0] - before
 

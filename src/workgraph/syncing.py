@@ -23,7 +23,7 @@ from . import paths
 from .store import Store, file_key
 from .tracking import STARTER, init_home
 
-FORMAT = 1
+FORMAT = 2        # 1: workgraph 0.2.x (`domain` was the pack, `layer` the graph kind); 2: workgraph 0.3.0 (`area`, `domain`)
 PARTS = ("workspace", "graphs", "comments", "org", "sessions", "llm-cache")
 DEFAULT_PARTS = ("workspace", "graphs", "comments")      # org (people), sessions (file lists) and the LLM cache are opt-in
 MANAGED = ("manifest.json", "workspace.yaml", "graphs", "store", "cache")
@@ -216,7 +216,11 @@ def import_tree(src: Path, store: Store) -> dict:
         raise SyncError(f"{src} is not a workgraph sync tree (no manifest.json)")
     manifest = json.loads(mf.read_text(encoding="utf-8"))
     if manifest.get("format") != FORMAT:
-        raise SyncError(f"sync format {manifest.get('format')} is not supported by this workgraph (expects {FORMAT})")
+        got = manifest.get("format")
+        if isinstance(got, int) and got < FORMAT:
+            raise SyncError(f"this sync tree has format {got}: it was written by an older workgraph (before 0.3.0, which renamed `domain` to `area` and `layer` to `domain`). "
+                            f"Nothing was applied. On the machine that wrote it: upgrade workgraph, run `workgraph utils migrate` and `workgraph sync push`; then pull again.")
+        raise SyncError(f"sync format {got} is not supported by this workgraph (expects {FORMAT}): it was written by a newer workgraph; upgrade this one")
     init_home()
     rep: dict = {"updated": [], "added": [], "conflicts": [], "projects added": [], "unresolved": []}
     if (src / "workspace.yaml").exists():

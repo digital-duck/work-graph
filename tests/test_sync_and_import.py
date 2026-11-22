@@ -240,3 +240,21 @@ def test_slug_decoding_finds_folders_with_dots_and_dashes(tmp_path):
     d = tmp_path / "digital-duck" / "SPL.py"
     d.mkdir(parents=True)
     assert ci.decode_slug(ci.slug(d)) == d
+
+
+def test_a_sync_tree_from_the_older_workgraph_is_refused_whole_with_what_to_do(tmp_path):
+    """0.3.0 renamed `domain` -> `area` and `layer` -> `domain`; a tree written before it (format 1) would be misread, so nothing of it is applied."""
+    import json
+    import pytest
+    from workgraph.store import Store
+    from workgraph.syncing import SyncError, import_tree
+    tree = tmp_path / "tree"
+    tree.mkdir()
+    (tree / "manifest.json").write_text(json.dumps({"format": 1, "parts": [], "counts": {}}), encoding="utf-8")
+    with Store(tmp_path / "db.sqlite3") as store, pytest.raises(SyncError) as e:
+        import_tree(tree, store)
+    assert "older workgraph" in str(e.value) and "workgraph utils migrate" in str(e.value) and "Nothing was applied" in str(e.value)
+    (tree / "manifest.json").write_text(json.dumps({"format": 3, "parts": [], "counts": {}}), encoding="utf-8")
+    with Store(tmp_path / "db.sqlite3") as store, pytest.raises(SyncError) as e:
+        import_tree(tree, store)
+    assert "newer workgraph" in str(e.value)
