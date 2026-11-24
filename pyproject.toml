@@ -28,7 +28,8 @@ dependencies = [
     "networkx",
     "dd-llm>=0.2.0",            # every LLM call: the adapters shared with GraphLang and SPL.py
     "graflang>=0.2.1",          # the recipes (src/workgraph/recipes/): workflows as graphs, run by its runtime
-    "zinet>=0.2.0",             # graph drawing (workgraph viz, the Map tab) and the comment-preserving YAML
+    "zinet>=0.2.3",             # graph drawing (workgraph viz, the Map tab), the comment-preserving YAML and the click help formatter
+    "click>=8.1",               # the command line (workgraph.cli)
     "pyyaml",
     "streamlit",                # workgraph ui
     "dd-embed[sentence-transformers,ollama]>=0.1.0",   # workgraph search --semantic: the embedding adapters shared with other projects (pulls in PyTorch)
@@ -44,7 +45,7 @@ Issues = "https://github.com/digital-duck/work-graph/issues"
 mcp = ["mcp"]
 ui = []          # kept so `pip install workgraph[ui]` still works: streamlit is a default dependency now
 semantic = []    # same: sentence-transformers is a default dependency now
-viz = ["zinet[pyvis]>=0.2.0"]
+viz = ["zinet[pyvis]>=0.2.3"]
 bedrock = ["dd-llm[bedrock]>=0.2.0"]
 leiden = ["graspologic; python_version < '3.13'"]
 dev = ["pytest"]

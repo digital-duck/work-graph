@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-import argparse
 import json
 import os
 from itertools import groupby
 from pathlib import Path
+from types import SimpleNamespace
 
+import click
 import networkx as nx
+from zinet.click_helpers import HELP_OPTION_NAMES, FullHelpGroup
 
 from .analyze import find_gaps
 from . import paths
@@ -367,7 +369,7 @@ def cmd_claude_setup(args) -> None:
 def _docs(args):
     M = query.load_graph(args.graph)
     try:
-        roots = query.roots_from_workspace(_workspace(argparse.Namespace(src=None, config=None, area="sdlc")))
+        roots = query.roots_from_workspace(_workspace(SimpleNamespace(src=None, config=None, area="sdlc")))
     except (FileNotFoundError, ValueError, KeyError):
         roots = {}
     docs = query.filter_docs(query.build_docs(M, roots), domain=args.domain, project=args.project, kind=args.kind)
@@ -549,171 +551,169 @@ def _graphify_version() -> str:
         return ""
 
 
-class _Help(argparse.HelpFormatter):
-    """Top-level help: list the commands with their descriptions, without the {a,b,c} line argparse adds."""
+# ---- the click command line -------------------------------------------------------------------------------
+# Each `cmd_*` above takes one `args` object (attributes named after the options), so tests and other code can call
+# them directly. `_cmd` wraps one in a click command: click parses, `_bind` hands the parsed values over as a namespace.
 
-    def __init__(self, prog):
-        super().__init__(prog, max_help_position=24, width=100)
+_CONFIG = click.option("-c", "--config", help="workspace file (default: ./workspace.yaml, else <home>/workspace.yaml)")
+_ADAPTER = click.option("--adapter", help="LLM backend, e.g. cc_cli (subscription) or bedrock; overrides config")
+_SRC = click.option("--src", multiple=True, metavar="URL_OR_PATH",
+                    help="build from a local folder or a git URL instead of a workspace file (repeatable)")
+_AREA_SRC = click.option("--area", default="sdlc", show_default=True, help="area pack for --src projects")
+_GRAPH = click.option("--graph", help="graph file (default: <home>/out/graph.json)")
+_WITH_PARTS = click.option("--with", "with_parts", help="extra parts, comma separated: org, sessions, llm-cache")
 
-    def _fill_text(self, text, width, indent):          # keep paragraph breaks in the description
-        import textwrap
-        return "\n\n".join(textwrap.fill(p, width, initial_indent=indent, subsequent_indent=indent)
-                           for p in text.split("\n\n"))
 
-    def _format_action(self, action):
-        if isinstance(action, argparse._SubParsersAction):
-            return "".join(self._format_action(a) for a in action._get_subactions())
-        return super()._format_action(action)
+def _bind(fn):
+    """A click callback that runs `fn(args)`: options become attributes of `args`, errors become `workgraph: message`."""
+    def callback(**kw):
+        args = SimpleNamespace(**{k: list(v) if isinstance(v, tuple) else v for k, v in kw.items()})
+        if getattr(args, "adapter", None):
+            try:
+                resolve_backend(args.adapter)                   # fail fast on a typo
+            except ValueError as e:
+                raise SystemExit(f"workgraph: {e}")
+            os.environ["WORKGRAPH_BACKEND"] = args.adapter     # same effect as exporting it
+        try:
+            fn(args)
+        except (ValueError, RuntimeError, FileNotFoundError) as e:   # SyncError is a RuntimeError
+            raise SystemExit(f"workgraph: {e}")
+    callback.__name__, callback.__doc__ = fn.__name__, fn.__doc__
+    return callback
+
+
+def _cmd(group, name, fn, short_help, *params, hidden=False):
+    """Register `fn` as the command `name` of `group`; `params` are click.option / click.argument, in help order."""
+    callback = _bind(fn)
+    for p in reversed(params):
+        callback = p(callback)
+    return group.command(name, short_help=short_help, hidden=hidden)(callback)
+
+
+def _workspace_options(*extra):
+    """The options of every command that builds from a workspace: build, gaps, open and `utils clones`."""
+    return (_CONFIG, _ADAPTER, click.option("--semantic", is_flag=True, help="also run LLM processors (needs a backend/API key)"),
+            _SRC, _AREA_SRC, click.option("-o", "--out", help="output folder (default: <home>/out)"),
+            click.option("-q", "--quiet", is_flag=True, help="no progress or timing output"), *extra)
+
+
+@click.group(
+    cls=FullHelpGroup, name="workgraph",
+    context_settings={"help_option_names": HELP_OPTION_NAMES, "max_content_width": 100},
+    help="A knowledge layer beside Claude Code. workgraph turns your projects, their lifecycle, products, "
+         "teams and processes into one searchable graph, and gives your Claude Code sessions a memory of it.\n\n"
+         f"Built on graphify {_graphify_version()} (https://github.com/Graphify-Labs/graphify, PyPI: graphifyy), "
+         "which supplies code and document extraction, clustering and graph export.",
+    epilog="Run `workgraph COMMAND -h` for the options of one command. Guides: docs/GUIDE in the repository.")
+def cli() -> None:
+    pass
+
+
+@cli.group("utils", cls=FullHelpGroup,
+           short_help="helper commands (areas, check, claude-setup, clones, context, convert, doctor, domains, migrate, show-llm, validate-pack)",
+           help="Helper commands: diagnostics, validation, conversion and setup.")
+def utils() -> None:
+    pass
+
+
+# -- utils
+_cmd(utils, "areas", cmd_areas, "list area packs")
+_cmd(utils, "check", cmd_check, "validate domain files and cross-graph references", _CONFIG,
+     click.option("--assign-uids", is_flag=True, help="write a uid into domain nodes that lack one"))
+_cmd(utils, "claude-setup", cmd_claude_setup, "show, or with --write install, the Claude Code hooks that feed workgraph",
+     click.option("--write", is_flag=True, help="merge the hooks into the user-level Claude Code settings"),
+     click.option("--settings", default="~/.claude/settings.json", show_default=True))
+_cmd(utils, "clones", cmd_clones, "files shared across projects", *_workspace_options())
+_cmd(utils, "context", cmd_context, "what the graph knows about the project at PATH (default: current folder)",
+     click.argument("path", default="."))
+_cmd(utils, "convert", cmd_convert, "convert a domain file between JSON and YAML, keeping YAML comments",
+     click.argument("file"), click.option("-o", "--out"),
+     click.option("--db", help="comment store (default: <home>/workgraph.sqlite3)"))
+_cmd(utils, "doctor", cmd_doctor, "show python/environment/graphify details and warn about conda base")
+_cmd(utils, "domains", cmd_domains, "show the domain map (domains as nodes, dependencies as edges) and build counts",
+     click.option("-o", "--out", help="domain partitions folder (default: <home>/out/domains)"))
+_cmd(utils, "migrate", cmd_migrate, "rewrite the home folder and workspace files from the 0.2.x words (domain -> area, layer -> domain)",
+     click.option("-c", "--config", multiple=True,
+                  help="another workspace file to rewrite (the default workspace is always included); repeatable"),
+     click.option("--dry-run", is_flag=True, help="only say what would change"))
+_cmd(utils, "show-llm", cmd_llm, "show the resolved LLM backend per processor and check readiness",
+     _CONFIG, _ADAPTER, _SRC, _AREA_SRC)
+_cmd(utils, "validate-pack", cmd_validate_pack, "check area packs (files or names) and list every problem",
+     click.argument("pack", nargs=-1, required=True))
+
+# -- top level
+_cmd(cli, "ask", cmd_ask, "answer a question from the built graph, with citations that are checked (a few model calls)",
+     click.argument("question"), _GRAPH,
+     click.option("--semantic", is_flag=True, help="also search by meaning (embeddings, else TF-IDF)"),
+     click.option("--adapter", help="LLM backend, e.g. cc_cli (subscription) or bedrock; overrides config"),
+     click.option("--recipe", help="a recipe of your own with the same inputs and outputs as `ask` (a folder in <home>/custom/recipes/)"),
+     click.option("--max-calls", type=int, default=4, show_default=True,
+                  help="the most model calls for this question (a full run uses 3)"))
+_cmd(cli, "build", cmd_build, "build the graph", *_workspace_options())
+_cmd(cli, "dump", cmd_dump, "pack your authored graph data into a tar.gz (for a USB stick), without the database",
+     click.option("-o", "--out", required=True, help="e.g. workgraph.tar.gz"), _WITH_PARTS)
+_cmd(cli, "gaps", cmd_gaps, "report gaps per area rules", *_workspace_options())
+_cmd(cli, "hook", cmd_hook, "", click.argument("event", type=click.Choice(["session-start", "session-end"])),
+     hidden=True)       # Claude Code hooks call it, so the name must stay; it is not for people
+_cmd(cli, "import-claude", cmd_import_claude, "backfill from Claude Code: track its projects, load session metadata",
+     click.option("--apply", is_flag=True, help="do it (the default is a dry run that only prints the plan)"),
+     click.option("--with-titles", is_flag=True, help="keep Claude's one-line session titles"),
+     click.option("--include-nested", is_flag=True, help="also track folders that sit inside another project"),
+     click.option("--projects-dir", help="default: ~/.claude/projects"))
+_cmd(cli, "init", cmd_init, "create the workgraph home folder and a starter workspace")
+_cmd(cli, "load", cmd_load, "merge a workgraph tar.gz into this machine", click.argument("file"))
+_cmd(cli, "open", cmd_open, "open work items from planning docs (use with --semantic)", *_workspace_options())
+_cmd(cli, "search", cmd_search, "keyword (default) or --semantic search over the built graph",
+     click.argument("query"),
+     click.option("--semantic", is_flag=True, help="rank by meaning: ollama or sentence-transformers embeddings, else TF-IDF"),
+     click.option("--backend", default="auto", show_default=True, type=click.Choice(["auto", "ollama", "sbert", "tfidf"])),
+     click.option("--limit", type=int, default=15, show_default=True),
+     click.option("--domain"), click.option("--project"), click.option("--kind"), _GRAPH)
+_cmd(cli, "show", cmd_show, "one node: attributes and its links",
+     click.argument("node"), click.option("--all", "all", is_flag=True, help="include symbol and external neighbours"),
+     click.option("--graph"))
+_cmd(cli, "status", cmd_status, "summary of the last built graph", click.option("--graph"))
+_cmd(cli, "sync", cmd_sync, "share your workgraph between machines through a PRIVATE git repository",
+     click.argument("action", type=click.Choice(["init", "push", "pull", "status"])),
+     click.argument("url", required=False),
+     _WITH_PARTS,
+     click.option("--confirm-private", is_flag=True, help="init: you checked that the repository is private"),
+     click.option("--clone-missing", is_flag=True, help="pull: clone projects that have no folder here"),
+     click.option("-m", "--message", help="push: commit message"))
+_cmd(cli, "track", cmd_track, "add a project folder to the default workspace",
+     click.argument("path", default="."), click.option("--name"), click.option("--area"))
+_cmd(cli, "ui", cmd_ui, "open the web app to review and search the graph",
+     click.option("--framework", type=click.Choice(["streamlit"]), default="streamlit", show_default=True,
+                  help="UI framework (only streamlit so far)"),
+     _GRAPH, click.option("--port", type=int, default=8501, show_default=True),
+     click.option("--no-browser", is_flag=True))
+_cmd(cli, "viz", cmd_viz, "draw the graph as a file you can open: cytoscape (default), graphviz, mermaid, ascii, pyvis, graphify",
+     click.option("--engine", default="cytoscape", show_default=True,
+                  type=click.Choice(["cytoscape", "graphviz", "mermaid", "ascii", "pyvis", "graphify"]),
+                  help="drawing engine (cytoscape: interactive, bundled, works offline)"),
+     click.option("--list-engines", is_flag=True, help="show the engines and whether each is ready"),
+     click.option("--domain"), click.option("--project"), click.option("--kind"), click.option("--stage"),
+     click.option("--node", help="draw this node (id or exact label) and its neighbourhood"),
+     click.option("--hops", type=int, default=2, show_default=True, help="neighbourhood radius for --node"),
+     click.option("--all", "all", is_flag=True, help="include symbol, external and rationale nodes (large)"),
+     click.option("--hubs", is_flag=True, help="keep the in_stage / belongs_to edges to stage and project hubs"),
+     click.option("--max-nodes", type=int, default=400, show_default=True, help="keep the best-connected N nodes"),
+     click.option("-o", "--out", help="output file (default <home>/out/graph-<engine>.html)"),
+     click.option("--no-open", is_flag=True, help="write the file but do not open a browser"),
+     _GRAPH)
 
 
 def main(argv: list[str] | None = None) -> None:
-    ap = argparse.ArgumentParser(
-        prog="workgraph", formatter_class=_Help,
-        description="A knowledge layer beside Claude Code. workgraph turns your projects, their lifecycle, products, "
-                    "teams and processes into one searchable graph, and gives your Claude Code sessions a memory of it.\n\n"
-                    f"Built on graphify {_graphify_version()} (https://github.com/Graphify-Labs/graphify, PyPI: graphifyy), "
-                    "which supplies code and document extraction, clustering and graph export.",
-        epilog="Run `workgraph COMMAND -h` for the options of one command. Guides: docs/GUIDE in the repository.")
-    sub = ap.add_subparsers(dest="cmd", required=True, title="commands", metavar="COMMAND")
-    utils = sub.add_parser("utils", formatter_class=_Help,
-                           help="helper commands (areas, check, claude-setup, clones, context, convert, doctor, domains, migrate, show-llm, validate-pack)",
-                           description="Helper commands: diagnostics, validation, conversion and setup.")
-    usub = utils.add_subparsers(dest="util", required=True, title="utils", metavar="SUBCOMMAND")
-    s = usub.add_parser("check", help="validate domain files and cross-graph references")
-    s.add_argument("-c", "--config", help="workspace file (default: ./workspace.yaml, else <home>/workspace.yaml)")
-    s.add_argument("--assign-uids", action="store_true", help="write a uid into domain nodes that lack one")
-    s.set_defaults(fn=cmd_check)
-    s = usub.add_parser("domains", help="show the domain map (domains as nodes, dependencies as edges) and build counts")
-    s.add_argument("-o", "--out", help="domain partitions folder (default: <home>/out/domains)")
-    s.set_defaults(fn=cmd_domains)
-    s = usub.add_parser("validate-pack", help="check area packs (files or names) and list every problem")
-    s.add_argument("pack", nargs="+", help="a pack file (.yaml) or the name of a built-in or custom pack")
-    s.set_defaults(fn=cmd_validate_pack)
-    s = usub.add_parser("convert", help="convert a domain file between JSON and YAML, keeping YAML comments")
-    s.add_argument("file")
-    s.add_argument("-o", "--out")
-    s.add_argument("--db", help="comment store (default: <home>/workgraph.sqlite3)")
-    s.set_defaults(fn=cmd_convert)
-    sub.add_parser("init", help="create the workgraph home folder and a starter workspace").set_defaults(fn=cmd_init)
-    s = sub.add_parser("track", help="add a project folder to the default workspace")
-    s.add_argument("path", nargs="?", default=".")
-    s.add_argument("--name")
-    s.add_argument("--area")
-    s.set_defaults(fn=cmd_track)
-    s = sub.add_parser("import-claude", help="backfill from Claude Code: track its projects, load session metadata")
-    s.add_argument("--apply", action="store_true", help="do it (the default is a dry run that only prints the plan)")
-    s.add_argument("--with-titles", action="store_true", help="keep Claude's one-line session titles")
-    s.add_argument("--include-nested", action="store_true", help="also track folders that sit inside another project")
-    s.add_argument("--projects-dir", help="default: ~/.claude/projects")
-    s.set_defaults(fn=cmd_import_claude)
-    s = sub.add_parser("dump", help="pack your authored graph data into a tar.gz (for a USB stick), without the database")
-    s.add_argument("-o", "--out", required=True, help="e.g. workgraph.tar.gz")
-    s.add_argument("--with", dest="with_parts", help="extra parts, comma separated: org, sessions, llm-cache")
-    s.set_defaults(fn=cmd_dump)
-    s = sub.add_parser("load", help="merge a workgraph tar.gz into this machine")
-    s.add_argument("file")
-    s.set_defaults(fn=cmd_load)
-    s = sub.add_parser("sync", help="share your workgraph between machines through a PRIVATE git repository")
-    s.add_argument("action", choices=["init", "push", "pull", "status"])
-    s.add_argument("url", nargs="?", help="init: URL of the private repository")
-    s.add_argument("--with", dest="with_parts", help="init: extra parts, comma separated: org, sessions, llm-cache")
-    s.add_argument("--confirm-private", action="store_true", help="init: you checked that the repository is private")
-    s.add_argument("--clone-missing", action="store_true", help="pull: clone projects that have no folder here")
-    s.add_argument("-m", "--message", help="push: commit message")
-    s.set_defaults(fn=cmd_sync)
-    s = sub.add_parser("hook")   # no help: hidden from the list; Claude Code hooks call it, so the name must stay
-    s.add_argument("event", choices=["session-start", "session-end"])
-    s.set_defaults(fn=cmd_hook)
-    s = usub.add_parser("claude-setup", help="show, or with --write install, the Claude Code hooks that feed workgraph")
-    s.add_argument("--write", action="store_true", help="merge the hooks into the user-level Claude Code settings")
-    s.add_argument("--settings", default="~/.claude/settings.json")
-    s.set_defaults(fn=cmd_claude_setup)
-    s = sub.add_parser("ask", help="answer a question from the built graph, with citations that are checked (a few model calls)")
-    s.add_argument("question")
-    s.add_argument("--graph", help="graph file (default: <home>/out/graph.json)")
-    s.add_argument("--semantic", action="store_true", help="also search by meaning (embeddings, else TF-IDF)")
-    s.add_argument("--adapter", help="LLM backend, e.g. cc_cli (subscription) or bedrock; overrides config")
-    s.add_argument("--recipe", help="a recipe of your own with the same inputs and outputs as `ask` (a folder in <home>/custom/recipes/)")
-    s.add_argument("--max-calls", type=int, default=4, help="the most model calls for this question (default 4; a full run uses 3)")
-    s.set_defaults(fn=cmd_ask)
-
-    s = sub.add_parser("search", help="keyword (default) or --semantic search over the built graph")
-    s.add_argument("query")
-    s.add_argument("--semantic", action="store_true", help="rank by meaning: ollama or sentence-transformers embeddings, else TF-IDF")
-    s.add_argument("--backend", default="auto", choices=["auto", "ollama", "sbert", "tfidf"])
-    s.add_argument("--limit", type=int, default=15)
-    s.add_argument("--domain"); s.add_argument("--project"); s.add_argument("--kind")
-    s.add_argument("--graph", help="graph file (default: <home>/out/graph.json)")
-    s.set_defaults(fn=cmd_search)
-    s = sub.add_parser("show", help="one node: attributes and its links")
-    s.add_argument("node", help="node id, or an exact label")
-    s.add_argument("--all", action="store_true", help="include symbol and external neighbours")
-    s.add_argument("--graph")
-    s.set_defaults(fn=cmd_show)
-    s = sub.add_parser("status", help="summary of the last built graph")
-    s.add_argument("--graph")
-    s.set_defaults(fn=cmd_status)
-    s = usub.add_parser("context", help="what the graph knows about the project at PATH (default: current folder)")
-    s.add_argument("path", nargs="?", default=".")
-    s.set_defaults(fn=cmd_context)
-    s = sub.add_parser("viz", help="draw the graph as a file you can open: cytoscape (default), graphviz, mermaid, ascii, pyvis, graphify")
-    s.add_argument("--engine", default="cytoscape", choices=["cytoscape", "graphviz", "mermaid", "ascii", "pyvis", "graphify"],
-                   help="drawing engine (default cytoscape: interactive, bundled, works offline)")
-    s.add_argument("--list-engines", action="store_true", help="show the engines and whether each is ready")
-    s.add_argument("--domain"); s.add_argument("--project"); s.add_argument("--kind"); s.add_argument("--stage")
-    s.add_argument("--node", help="draw this node (id or exact label) and its neighbourhood")
-    s.add_argument("--hops", type=int, default=2, help="neighbourhood radius for --node (default 2)")
-    s.add_argument("--all", action="store_true", help="include symbol, external and rationale nodes (large)")
-    s.add_argument("--hubs", action="store_true", help="keep the in_stage / belongs_to edges to stage and project hubs")
-    s.add_argument("--max-nodes", type=int, default=400, help="keep the best-connected N nodes (default 400)")
-    s.add_argument("-o", "--out", help="output file (default <home>/out/graph-<engine>.html)")
-    s.add_argument("--no-open", action="store_true", help="write the file but do not open a browser")
-    s.add_argument("--graph", help="graph file (default: <home>/out/graph.json)")
-    s.set_defaults(fn=cmd_viz)
-    s = sub.add_parser("ui", help="open the web app to review and search the graph")
-    s.add_argument("--framework", choices=["streamlit"], default="streamlit", help="UI framework (only streamlit so far)")
-    s.add_argument("--graph", help="graph file (default: <home>/out/graph.json)")
-    s.add_argument("--port", type=int, default=8501)
-    s.add_argument("--no-browser", action="store_true")
-    s.set_defaults(fn=cmd_ui)
-    usub.add_parser("areas", help="list area packs").set_defaults(fn=cmd_areas)
-    s = usub.add_parser("migrate", help="rewrite the home folder and workspace files from the 0.2.x words (domain -> area, layer -> domain)")
-    s.add_argument("-c", "--config", action="append", help="another workspace file to rewrite (the default workspace is always included); repeatable")
-    s.add_argument("--dry-run", action="store_true", help="only say what would change")
-    s.set_defaults(fn=cmd_migrate)
-    usub.add_parser("doctor", help="show python/environment/graphify details and warn about conda base").set_defaults(fn=cmd_doctor)
-    s = usub.add_parser("show-llm", help="show the resolved LLM backend per processor and check readiness")
-    s.add_argument("-c", "--config", help="workspace file (default: ./workspace.yaml, else <home>/workspace.yaml)")
-    s.add_argument("--adapter", help="LLM backend, e.g. cc_cli (subscription) or bedrock; overrides config")
-    s.add_argument("--src", action="append", metavar="URL_OR_PATH", help="check a folder or git URL instead of a workspace file")
-    s.add_argument("--area", default="sdlc", help="area pack for --src projects (default sdlc)")
-    s.set_defaults(fn=cmd_llm)
-    for group, name, fn, h in ((sub, "build", cmd_build, "build the graph"), (sub, "gaps", cmd_gaps, "report gaps per area rules"),
-                               (usub, "clones", cmd_clones, "files shared across projects"),
-                               (sub, "open", cmd_open, "open work items from planning docs (use with --semantic)")):
-        s = group.add_parser(name, help=h)
-        s.add_argument("-c", "--config", help="workspace file (default: ./workspace.yaml, else <home>/workspace.yaml)")
-        s.add_argument("--adapter", help="LLM backend, e.g. cc_cli (subscription) or bedrock; overrides config")
-        s.add_argument("--semantic", action="store_true", help="also run LLM processors (needs a backend/API key)")
-        s.add_argument("--src", action="append", metavar="URL_OR_PATH",
-                       help="build from a local folder or a git URL instead of a workspace file (repeatable)")
-        s.add_argument("--area", default="sdlc", help="area pack for --src projects (default sdlc)")
-        s.add_argument("-o", "--out", help="output folder (default: <home>/out)")
-        s.add_argument("-q", "--quiet", action="store_true", help="no progress or timing output")
-        s.set_defaults(fn=fn)
-    for g in (sub, usub):
-        g._choices_actions.sort(key=lambda a: a.dest)    # list the commands alphabetically in --help
-    args = ap.parse_args(argv)
-    if getattr(args, "adapter", None):
-        try:
-            resolve_backend(args.adapter)                   # fail fast on a typo
-        except ValueError as e:
-            raise SystemExit(f"workgraph: {e}")
-        os.environ["WORKGRAPH_BACKEND"] = args.adapter     # same effect as exporting it
+    """Run the command line. Returns on success; raises SystemExit on failure (so tests can call it with an argv)."""
     try:
-        args.fn(args)
-    except (ValueError, RuntimeError, FileNotFoundError) as e:   # SyncError is a RuntimeError
-        raise SystemExit(f"workgraph: {e}")
+        code = cli.main(args=argv, prog_name="workgraph", standalone_mode=False)
+    except click.ClickException as e:           # usage errors: message on stderr, exit 2
+        e.show()
+        raise SystemExit(e.exit_code)
+    except click.Abort:
+        raise SystemExit("Aborted!")
+    if isinstance(code, int) and code:
+        raise SystemExit(code)
 
 
 if __name__ == "__main__":
