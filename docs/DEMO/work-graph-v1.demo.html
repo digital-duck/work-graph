@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>work-graph</title>
+<style>
+  :root {
+    --ink: #1c2330; --muted: #5b6678; --paper: #fbfbfa; --line: #dfe3ea;
+    --blue: #4f8df5; --gray: #8a919c; --green: #2e9e6b; --orange: #e8913a; --red: #d8473f;
+    --code-bg: #0f1623; --code-ink: #dbe4f3;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #e9ebef; color: var(--ink);
+    font: 26px/1.42 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .deck { position: fixed; inset: 0 0 4.5vh 0; display: grid; place-items: center; }
+  .slide { display: none; width: min(96vw, 158vh); height: min(54vw, 89vh); background: var(--paper);
+    border-radius: 14px; box-shadow: 0 8px 40px rgba(20,30,50,.18); padding: 4.2% 5.5% 3.5%;
+    flex-direction: column; overflow: hidden; position: relative; }
+  .slide.on { display: flex; }
+  h1 { font-size: 2.5em; line-height: 1.1; margin: 0 0 .3em; letter-spacing: -.02em; }
+  h2 { font-size: 1.7em; margin: 0 0 .5em; letter-spacing: -.01em; }
+  h2::after { content: ""; display: block; width: 64px; height: 4px; background: var(--blue); border-radius: 2px; margin-top: .25em; }
+  h3 { font-size: 1.05em; margin: 0 0 .3em; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+  p { margin: 0 0 .6em; }
+  ul { margin: 0; padding-left: 1.1em; }
+  li { margin: .3em 0; }
+  li > ul { font-size: .82em; margin-top: .1em; }
+  li::marker { color: var(--blue); }
+  .sub { color: var(--muted); font-size: 1.15em; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 3%; align-items: start; flex: 1; min-height: 0; }
+  .cols.wide-left { grid-template-columns: 1.25fr 1fr; }
+  .cols.wide-right { grid-template-columns: 1fr 1.25fr; }
+  pre, code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  code { background: #eef0f4; padding: .05em .35em; border-radius: 4px; font-size: .88em; }
+  pre { background: var(--code-bg); color: var(--code-ink); padding: .7em .9em; border-radius: 10px; font-size: .66em; line-height: 1.45;
+    margin: 0 0 .6em; overflow: hidden; white-space: pre; }
+  pre .c { color: #7d8ba3; } pre .k { color: #8cc4ff; } pre .s { color: #a5e3b4; } pre .h { color: #ffcf7a; }
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: .6em .9em; }
+  .tag { display: inline-block; font-size: .62em; font-weight: 700; padding: .12em .6em; border-radius: 99px; color: #fff; vertical-align: middle; }
+  .t-gen { background: var(--blue); } .t-io { background: var(--gray); } .t-sol { background: var(--green); }
+  .t-ctl { background: var(--orange); } .t-safe { background: var(--red); }
+  table { border-collapse: collapse; width: 100%; font-size: .92em; }
+  th, td { text-align: left; padding: .35em .6em; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: .85em; text-transform: uppercase; letter-spacing: .05em; }
+  .big { font-size: 1.5em; line-height: 1.3; }
+  .center { text-align: center; }
+  .grow { flex: 1; min-height: 0; }
+  .foot { position: absolute; left: 5.5%; right: 5.5%; bottom: 1.8%; display: flex; justify-content: space-between;
+    color: #9aa3b2; font-size: .5em; }
+  .foot a { color: inherit; text-decoration: underline; }
+  .refs a { color: var(--blue); display: block; }
+  .refs li { font-size: .78em; }
+  .quiet { color: var(--muted); }
+  .good { color: var(--green); font-weight: 600; } .bad { color: var(--red); font-weight: 600; }
+  .demo { border-left: 6px solid var(--orange); background: #fff6ea; border-radius: 0 10px 10px 0; padding: .5em .9em; margin-bottom: .7em; font-size: .85em; }
+  .demo b { color: var(--orange); letter-spacing: .06em; font-size: .8em; text-transform: uppercase; }
+  .stack > * { margin-bottom: .45em; }
+  svg { max-width: 100%; height: auto; }
+  svg text { font: 600 13px system-ui, sans-serif; }
+  #bar { position: fixed; left: 0; top: 0; height: 4px; background: var(--blue); width: 0; transition: width .2s; z-index: 5; }
+  #nav { position: fixed; left: 50%; bottom: 8px; transform: translateX(-50%); display: flex; gap: 6px; z-index: 6; }
+  #nav button { font: 600 14px system-ui, sans-serif; min-width: 44px; padding: 6px 12px; border-radius: 8px; border: 1px solid #c9ced8;
+    background: #fff; color: var(--ink); cursor: pointer; }
+  #nav button:hover { background: #eef2fb; border-color: var(--blue); }
+  #nav button:disabled { opacity: .4; cursor: default; background: #fff; border-color: #c9ced8; }
+  #nav #pdf { margin-left: 10px; }
+  #nav #tocbtn { margin-right: 10px; }
+  #hud { position: fixed; right: 14px; bottom: 10px; font-size: 13px; color: #7d8696; z-index: 5; }
+  .toc { columns: 3; column-gap: 3%; list-style: none; margin: 0; padding: 0; font-size: .8em; }
+  .toc li { break-inside: avoid; margin: .22em 0; padding: .12em .3em; border-radius: 6px; cursor: pointer; display: flex; gap: .6em; }
+  .toc li:hover { background: #eef2fb; }
+  .toc .n { color: var(--blue); font-weight: 700; min-width: 1.6em; text-align: right; }
+  .notes { display: none; }
+  #notes-box { display: none; }
+  body.show-notes #notes-box { display: block; position: fixed; left: 0; right: 0; bottom: 0; max-height: 34vh; overflow: auto;
+    background: #141a26; color: #d7deeb; padding: 14px 6vw; font-size: 17px; line-height: 1.5; z-index: 9; }
+  @page { size: 13.333in 7.5in; margin: 0; }
+  @media print {
+    html, body { background: #fff; height: auto; font-size: 24px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .deck { position: static; display: block; }
+    .slide { display: flex !important; width: 13.333in; height: 7.5in; border-radius: 0; box-shadow: none; break-after: page; page-break-after: always; }
+    .slide:last-child { break-after: auto; page-break-after: auto; }
+    pre { font-size: .58em; }       /* the page is smaller than the screen: keep code lines inside their box */
+    #bar, #hud, #nav, .notes, #notes-box { display: none !important; }
+  }
+</style>
+</head>
+<body data-title="work-graph">
+<div id="bar"></div>
+<div id="nav">
+  <button id="tocbtn" title="Outline (T)">TOC</button>
+  <button id="first" title="First slide (Home)">&lt;&lt;</button>
+  <button id="prev" title="Previous slide (←)">&lt;</button>
+  <button id="next" title="Next slide (→ or space)">&gt;</button>
+  <button id="last" title="Last slide (End)">&gt;&gt;</button>
+  <button id="pdf" title="Opens the print dialog: choose Save as PDF, landscape, margins None, and tick Background graphics">PDF</button>
+</div>
+<div id="hud">← → or space · T outline · F fullscreen · N notes · O overview</div>
+<div class="deck" id="deck">
+<section class="slide">
+  <div style="margin:auto 0">
+    <h1>work-graph</h1>
+    <p class="big">A personal AI assistant built on a knowledge-base graph for SDLC</p>
+
+    <br>
+    <p class="quiet" style="margin-top:3.2em"><a href="mailto:wen.gong.research@gmail.com" style="color:inherit">wen.gong.research@gmail.com</a></p>
+
+  </div>
+  <div class="foot"><span><a href="https://github.com/digital-duck/work-graph" target="_blank" rel="noopener">https://github.com/digital-duck/work-graph</a></span><span>Hackathon project, early prototype</span></div>
+  <aside class="notes">workgraph is a hackathon project and an early prototype. It treats everything you produce and consume while building software as nodes in one graph. The assistant then reasons over that graph instead of over a single file or chat window.</aside>
+</section>
+
+<section class="slide" id="outline">
+  <h2>Outline</h2>
+  <ol class="toc" id="toc"></ol>
+  <aside class="notes">The outline lists every slide title; click a line to jump.</aside>
+</section>
+
+<section class="slide">
+  <h2>Assistants see only a snapshot</h2>
+  <div class="cols">
+    <ul>
+      <li>Most AI coding assistants see <b>the open file</b>, a few neighbours and a chat history.</li>
+      <li>The things that make software work sit outside that window.</li>
+      <li>That knowledge is scattered across repos, docs, tickets, notes, machines and your head.</li>
+      <li>It is <b>relational</b>, so a graph is a natural way to store it.</li>
+    </ul>
+    <div class="card stack">
+      <h3>Questions the window cannot answer</h3>
+      <div>Why was this designed this way?</div>
+      <div>Which requirement does this function satisfy, and which tests cover it?</div>
+      <div>Which paper, ticket or Slack thread explains this workaround?</div>
+      <div>What did I learn last time I hit this class of bug?</div>
+    </div>
+  </div>
+  <aside class="notes">The decision made three months ago, the requirement and the tests are not in the open file. Each new session starts cold. workgraph keeps this knowledge in one graph.</aside>
+</section>
+
+<section class="slide">
+  <h2>One graph, many artifact types</h2>
+  <ul>
+    <li>Requirements, design decisions, code, tests, bugs, meetings, papers and half-formed ideas become <b>linked nodes</b>.</li>
+    <li>The graph models the lifecycle, so traceability comes from the links: requirement → design → implementation → test → release.</li>
+    <li><b>Personal first</b>: it runs locally, you own it, and it persists in plain files.</li>
+    <li>Answers are grounded in a <b>subgraph</b> (a node, its neighbourhood, the paths between nodes), not only in top-k text chunks.</li>
+    <li>Answers can cite the nodes they used.</li>
+  </ul>
+  <aside class="notes">Code is one kind of knowledge among many. The same engine also covers reading notes, research, meeting outcomes and retrospectives.</aside>
+</section>
+
+<section class="slide">
+  <h2>Graph artifacts drive the AI workflow</h2>
+  <div class="cols">
+    <ul>
+      <li><b>Persistent context</b>: a file that outlives any one conversation and that any tool can read.</li>
+      <li>Before a task, an agent loads the relevant sub-graph instead of finding everything again in raw files.</li>
+      <li><b>The graph steers the work</b>: gap rules, process stages and open work items show the next step.</li>
+      <li>Agent output is written back into the graph.</li>
+    </ul>
+    <div class="card stack">
+      <h3>Human in the loop</h3>
+      <div>✔ LLM-proposed nodes and edges are <code>INFERRED</code></div>
+      <div>✔ they stay that way until a person confirms them in the YAML review format</div>
+      <div>✔ agents and people read and write the same artifacts</div>
+    </div>
+  </div>
+  <aside class="notes">The graph files are the working memory of the AI-assisted process, not a report generated at the end. Any agent can use them, whether it is Claude Code, another assistant or a script. Nothing depends on one tool's private memory.</aside>
+</section>
+
+<section class="slide">
+  <h2>A thin layer over graphify</h2>
+  <div class="cols wide-left">
+    <ul>
+      <li>The engine is <b>graphify</b>, used as a library from PyPI (<code>graphifyy[sql]&gt;=0.7.19</code>).</li>
+      <li>graphify provides file detection, tree-sitter extraction for about 25 languages, LLM extraction, entity dedup, Leiden clustering, queries and export.</li>
+      <li>The graph is a <b>NetworkX</b> graph throughout.</li>
+      <li>workgraph adapts it to an <b>area</b> by supplying an area pack.</li>
+    </ul>
+    <div class="card stack">
+      <h3>Other dependencies</h3>
+      <div><span class="tag t-gen">dd-llm</span> every LLM call</div>
+      <div><span class="tag t-ctl">graflang</span> the recipes</div>
+      <div><span class="tag t-io">zinet</span> graph drawing</div>
+      <div><span class="tag t-sol">dd-embed</span> semantic search</div>
+    </div>
+  </div>
+  <aside class="notes">workgraph does not reimplement extraction or clustering. It adds the lifecycle vocabulary, the links and the gap rules on top of graphify.</aside>
+</section>
+
+<section class="slide">
+  <h2>Area packs: vocabulary and processing</h2>
+  <ul>
+    <li><b>Vocabulary</b>: stages and their flow, legal relations, gap rules, path classifiers.</li>
+    <li><b>Processing</b>: which file type goes through which processor and LLM backend, e.g. <code>*.py</code> → tree-sitter, <code>*.md</code> → frontmatter.</li>
+    <li>A new area is a new YAML file. Each project in a workspace picks its own pack.</li>
+  </ul>
+<pre><span class="c">$ workgraph utils areas</span>
+sdlc        Software development lifecycle: requirement → design
+            → build → test → release → operate
+research    Research: question → literature → hypothesis
+            → experiment → analysis → writeup
+publishing  Publishing: idea → outline → draft → edit → publish
+            → promote
+</pre>
+  <aside class="notes">The shipped packs are in src/workgraph/areas. Everything in the sdlc demo is driven by src/workgraph/areas/sdlc.yaml, for example test verifies requirement, and the path rule that files under tests are tagged test.</aside>
+</section>
+
+<section class="slide">
+  <h2>Graph model</h2>
+  <div class="cols">
+    <div class="card stack">
+      <h3>Process nodes</h3>
+      <div><code>stage:&lt;area&gt;:&lt;id&gt;</code> joined by <code>precedes</code></div>
+      <div><code>project:&lt;name&gt;</code> joined to its stages</div>
+    </div>
+    <div class="card stack">
+      <h3>Knowledge nodes</h3>
+      <div>files, symbols, documents, requirements, decisions, questions, hypotheses</div>
+      <div>carry <code>kind</code>, <code>project</code> and <code>stages</code>, a list such as <code>[requirement, design]</code></div>
+    </div>
+  </div>
+  <ul>
+    <li>Edges carry <code>relation</code> and a confidence: <code>EXTRACTED</code>, <code>INFERRED</code> or <code>AMBIGUOUS</code>.</li>
+    <li>Analysis and clustering run on <b>knowledge nodes only</b>, because stage and project hubs would skew the results.</li>
+  </ul>
+  <aside class="notes">Stage tags are checked against the pack's vocabulary, and unknown tags are rejected. Each tag is also an in_stage edge.</aside>
+</section>
+
+<section class="slide">
+  <h2>Explicit links, derived links, gaps</h2>
+  <div class="cols">
+    <div>
+<pre><span class="c"># docs/requirements/... frontmatter</span>
+<span class="k">satisfies</span>: [REQ-001]
+
+<span class="c"># any code file</span>
+<span class="h"># verifies: REQ-001</span></pre>
+    </div>
+    <ul>
+      <li>Relation names come from the pack's <code>flow_relations</code>.</li>
+      <li><b>Derived</b>: when a test file imports a code file, an <code>INFERRED</code> <code>verifies</code> edge is created.</li>
+      <li><b>Gaps</b>: the pack's <code>expectations</code> ("every requirement needs a test") are run as graph queries.</li>
+      <li>Rules can skip trivial files (<code>min_symbols</code>, <code>exclude</code>). Broken references are reported.</li>
+    </ul>
+  </div>
+  <aside class="notes">The derived verifies edge follows from the pack's rules and is not hardcoded. LLM-extracted items are skipped by gap rules unless include_llm is set.</aside>
+</section>
+
+<section class="slide">
+  <h2>The build pipeline</h2>
+  <p>In <code>src/workgraph/pipeline.py</code>, <code>build_workspace</code> does the following for each project in a workspace:</p>
+<pre><span class="k">processors.run_processors</span>   <span class="c"># per artifact type</span>
+  → <span class="k">_tag</span>                     <span class="c"># stage tags</span>
+  → <span class="k">_resolve_refs</span>            <span class="c"># cross-references</span>
+  → <span class="k">links.cross_project_links</span>
+  → <span class="k">derive_flow_edges</span>
+  → graphify <span class="k">build</span> / <span class="k">cluster</span>  <span class="c"># on knowledge nodes</span></pre>
+  <ul>
+    <li>Processors: <code>ast</code>, <code>frontmatter</code>, <code>annotations</code>, <code>llm</code>, <code>llm_items</code>.</li>
+    <li>The <b>structural build needs no LLM</b>. LLM processors run only with <code>--semantic</code>.</li>
+  </ul>
+  <aside class="notes">File walking honours .gitignore, .graphifyignore and the ignore lists of the pack and the project. The result is written to home/out/graph.json.</aside>
+</section>
+
+<section class="slide">
+  <h2>Demo: trace a requirement in acme-shop</h2>
+  <div class="cols">
+<pre><span class="c">$ workgraph build -c acme-shop/workspace.yaml</span>
+<span class="h">23 nodes, 65 edges, 5 communities</span>
+[sdlc]
+  requirement  {'acme-shop': 4}
+  design       {'acme-shop': 2}
+  build        {'acme-shop': 2}
+  test         {'acme-shop': 1}
+
+<span class="c">$ workgraph gaps -c acme-shop/workspace.yaml</span>
+<span class="c">$ workgraph show REQ-002</span></pre>
+    <ul>
+      <li>A tiny shop: requirements, ADRs, a roadmap, <code>src/cart.py</code>, <code>src/checkout.py</code> and tests.</li>
+      <li><code>gaps</code> lists what the pack expects but does not find.</li>
+      <li><code>show</code> prints one node and its links.</li>
+    </ul>
+  </div>
+  <div class="demo"><b>Demo</b> build acme-shop, run gaps, then show REQ-002 and follow its links</div>
+  <aside class="notes">This follows the tutorial and runs in a scratch WORKGRAPH_HOME. The counts come from the tutorial run and depend on doing its steps in order.</aside>
+</section>
+
+<section class="slide">
+  <h2>Search, show and ask</h2>
+  <ul>
+    <li><code>workgraph search "checkout test"</code>: keyword search over names, paths, summaries and the first lines of each file.</li>
+    <li><code>ask</code> is the GraphLang recipe <code>src/workgraph/recipes/ask/</code>:</li>
+  </ul>
+<pre>keywords <span class="c">(model)</span> → context <span class="c">(program: matches + neighbours)</span>
+  → answer citing <span class="h">[node id]</span> <span class="c">(model)</span>
+  → verify <span class="c">(program: every cited id was given)</span>
+  → <span class="k">grounded</span> | <span class="k">ungrounded</span> | <span class="k">empty</span></pre>
+  <ul>
+    <li>At most 3 model calls. <code>--max-calls</code> sets the cap and defaults to 4.</li>
+    <li>The command exits non-zero unless the answer is grounded. <b>The model never decides the status.</b></li>
+  </ul>
+  <aside class="notes">An ungrounded answer is still shown, but it is marked as not to be relied on. When nothing in the graph matches, the model is not asked for an answer at all. Verify allows one repair attempt.</aside>
+</section>
+
+<section class="slide">
+  <h2>Semantic search with local embeddings</h2>
+<pre><span class="c">$ workgraph search "how are carts stored?" --semantic</span></pre>
+  <ul>
+    <li>Tries <b>Ollama</b> first (default model <code>nomic-embed-text</code>), then <b>sentence-transformers</b>.</li>
+    <li>If neither is available, it falls back to lexical <b>TF-IDF</b> and says so.</li>
+    <li>Both embedding backends are dd-embed adapters. Settings: <code>WORKGRAPH_EMBED_MODEL</code>, <code>OLLAMA_HOST</code>, <code>WORKGRAPH_EMBED_DEVICE</code>.</li>
+    <li>The vector cache is JSON under <code>&lt;home&gt;/cache/embeddings</code>, keyed by a content hash and safe to sync.</li>
+  </ul>
+  <aside class="notes">Ollama keeps this local and free: ollama pull nomic-embed-text. dd-embed's own pickle cache is not used, because it is keyed by the full text.</aside>
+</section>
+
+<section class="slide">
+  <h2>Drawing and browsing the graph</h2>
+  <div class="cols wide-left">
+    <div>
+<pre><span class="c">$ workgraph viz</span>                  <span class="c"># cytoscape, offline</span>
+<span class="c">$ workgraph viz --list-engines</span>
+<span class="c">$ workgraph viz --node "Checkout" --hops 2</span>
+<span class="c">$ workgraph viz --all --max-nodes 800 -o map.html</span></pre>
+      <ul>
+        <li><code>viz.select()</code> hides symbols and hub edges and keeps the 400 best-connected nodes.</li>
+        <li>It prints what it cut, e.g. "showing the 400 best-connected of 1,210 nodes".</li>
+      </ul>
+    </div>
+    <div class="card stack">
+      <h3>Numbers from the notes</h3>
+      <div>1,337-node sample graph</div>
+      <div>default view: <b>91 nodes</b></div>
+      <div>engines: cytoscape, pyvis, graphify, graphviz, mermaid, ascii</div>
+      <div><code>workgraph ui</code>: Streamlit app with a Map tab</div>
+    </div>
+  </div>
+  <aside class="notes">A raw drawing of a real build turns into a hairball around the stage and project hubs. Most of the work is choosing what to draw. Colour shows the domain, and dashed edges are INFERRED or AMBIGUOUS.</aside>
+</section>
+
+<section class="slide">
+  <h2>Memory for Claude Code</h2>
+  <ul>
+    <li><b>Session start hook</b>: tracks the project and adds a short graph summary to the context (stages, gaps, open items, product, owner, earlier changes).</li>
+    <li><b>Session end hook</b>: records what changed and rebuilds the graph in the background.</li>
+    <li><code>/workgraph</code> queries the graph from inside a session.</li>
+    <li><code>workgraph import-claude</code> backfills earlier work: projects, session metadata and memory files.</li>
+    <li>Install with <code>workgraph utils claude-setup --write</code> or the plugin in <code>plugin/</code>. Use one, not both.</li>
+    <li>The plugin is <b>not published to a marketplace yet</b>. To try it: <code>claude --plugin-dir &lt;path&gt;/plugin</code>.</li>
+  </ul>
+  <aside class="notes">Work done through Claude Code flows into the same graph with no manual ingestion. Data lives in ~/workgraph, or in WORKGRAPH_HOME if that is set.</aside>
+</section>
+
+<section class="slide">
+  <h2>Many domain graphs that reference each other</h2>
+  <table>
+    <tr><th>Graph</th><th>Example hierarchy</th></tr>
+    <tr><td>Repo</td><td>workspace &gt; project &gt; file &gt; symbol</td></tr>
+    <tr><td>Product</td><td>product family &gt; product &gt; application</td></tr>
+    <tr><td>Org</td><td>company &gt; division &gt; department &gt; group &gt; team &gt; person</td></tr>
+    <tr><td>Process</td><td>requirement spec &gt; solution design &gt; build &gt; test &gt; release</td></tr>
+  </table>
+  <ul>
+    <li>Each level joins its parent through <code>part_of</code>. References such as <code>org:acme/payments</code> and <code>process:sdlc</code> are resolved at load time.</li>
+    <li>All domains merge into <b>one in-memory graph</b>. Unresolvable references are reported as broken.</li>
+  </ul>
+  <aside class="notes">A repo belongs_to a product, a product is owned_by an org node and follows a process. Org and process nodes are defined once, so the same team never exists as several copies. Examples are in examples/graphs.</aside>
+</section>
+
+<section class="slide">
+  <h2>JSON for machines, YAML for people</h2>
+  <div class="cols">
+    <ul>
+      <li><b>JSON</b> is the canonical form, used for validation, integrity checks and <code>graph.json</code>.</li>
+      <li><b>YAML</b> is for review and audit, and reviewers can add comments.</li>
+      <li>Converters work in both directions and do not lose graph content. Validation runs on the JSON side.</li>
+    </ul>
+    <div class="card stack">
+      <h3>SQLite comment store</h3>
+      <div>✔ anchors comments by file, node ID and key path</div>
+      <div>✔ restores them on JSON → YAML</div>
+      <div>✔ keeps orphaned comments and reports them</div>
+    </div>
+  </div>
+<pre><span class="c">$ workgraph utils convert examples/graphs/org.json</span></pre>
+  <aside class="notes">YAML comments have no JSON equivalent, so a plain conversion would lose them. Anchoring by key path instead of line number means comments survive reordering and reformatting.</aside>
+</section>
+
+<section class="slide">
+  <h2>One LLM seam</h2>
+  <ul>
+    <li><code>src/workgraph/llm.py</code> is the only code that calls a model, and every backend is a <b>dd-llm adapter</b>.</li>
+    <li>Backend resolution order:</li>
+  </ul>
+<pre>explicit arg → <span class="k">WORKGRAPH_BACKEND</span> → project backend:
+  → processor backend: in pack → default <span class="h">cc_cli</span></pre>
+  <ul>
+    <li><code>cc_cli</code> strips <code>ANTHROPIC_API_KEY</code> and similar variables, so calls bill the Claude Code subscription.</li>
+    <li>LLM processors run only with <code>--semantic</code>.</li>
+    <li><code>workgraph utils show-llm</code> shows the resolved backend, billing and readiness for each processor.</li>
+  </ul>
+  <aside class="notes">The adapters are shared with GraphLang and SPL.py, so billing fixes belong in dd-llm. A model overload stops the LLM pass with a warning and does not fail the build.</aside>
+</section>
+
+<section class="slide">
+  <h2>Moving between machines</h2>
+  <ul>
+    <li><b>The database never leaves the machine.</b></li>
+    <li>Only what cannot be rebuilt travels, as text: domain files, YAML comments and the portable workspace.</li>
+    <li><code>workgraph dump</code> / <code>load</code> handle a first setup, for example by USB.</li>
+    <li><code>workgraph sync push</code> / <code>pull</code> go through a <b>private</b> GitHub repository.</li>
+    <li>Exports are scanned and stop on databases, large files or anything shaped like a key.</li>
+    <li>The org domain, session journal and LLM cache are opt-in.</li>
+  </ul>
+  <aside class="notes">If the GitHub CLI is logged in, sync init checks that the repository really is private. The User Guide has the details under "Moving to another machine".</aside>
+</section>
+
+<section class="slide">
+  <h2>How to try it</h2>
+<pre>conda create -n graf python=3.11 pip -y
+conda activate graf
+python -m pip install -e ".[dev]"
+workgraph utils doctor      <span class="c"># warns [!!] in conda base</span>
+
+workgraph build -c examples/workspace.yaml
+workgraph gaps  -c examples/workspace.yaml
+workgraph gaps --src &lt;path-or-git-url&gt;   <span class="c"># no workspace file</span></pre>
+  <ul>
+    <li>Do not skip <code>python=3.11 pip</code>. Without it, packages end up in the base environment.</li>
+    <li>The structural build needs no LLM and no API key.</li>
+  </ul>
+  <aside class="notes">Always use python -m pip so the pip from the environment is used. Git URLs passed to --src are shallow-cloned into home/src. docs/GUIDE/TUTORIAL.md is a walk-through of about 40 minutes.</aside>
+</section>
+
+<section class="slide">
+  <h2>What is not done yet</h2>
+  <ul>
+    <li>Early hackathon prototype.</li>
+    <li><b>Process instances</b> (a product's status within a process template) are not built. Only templates and the <code>follows</code> link exist.</li>
+    <li>Per-domain vocabulary is still Python constants in <code>schema.py</code>, not YAML packs.</li>
+    <li>Other LLM backends (<code>bedrock</code>, <code>claude</code>, <code>gemini</code>, ...) are wired and readiness-checked only, not exercised.</li>
+    <li>The Domains tab has passed headless tests but has <b>not been looked at in a browser</b>.</li>
+    <li>The plugin is unpublished. The 0.3.0 renames (<code>domain</code> → <code>area</code>, <code>layer</code> → <code>domain</code>) are not released yet.</li>
+  </ul>
+  <aside class="notes">The design document has a status table with how far each feature was checked. For an existing home folder, workgraph utils migrate moves it to the 0.3.0 names, and --dry-run shows what it would do.</aside>
+</section>
+
+<section class="slide">
+  <h2>References</h2>
+  <ul class="refs">
+    <li><a href="https://github.com/digital-duck/work-graph">workgraph repository</a></li>
+    <li><a href="https://github.com/digital-duck/work-graph/tree/main/docs/GUIDE">Documentation: setup, user guide, tutorial</a></li>
+    <li><a href="https://github.com/Graphify-Labs/graphify">graphify</a></li>
+    <li><a href="https://graaph.org/">graaph.org</a></li>
+    <li><a href="https://pypi.org/project/dd-llm/">dd-llm on PyPI</a></li>
+  </ul>
+  <aside class="notes">Start with the tutorial in docs/GUIDE. It runs against the shipped examples.</aside>
+</section>
+
+<section class="slide">
+  <div style="margin:auto 0">
+    <h1>Questions?</h1>
+  </div>
+  <aside class="notes">Take questions. Offer to run any command again live against acme-shop.</aside>
+</section>
+</div>
+
+<script>
+(function () {
+  // the outline slide is built from the other slides' titles, so it cannot drift when a slide is added or renamed
+  (function () {
+    const all = [...document.querySelectorAll('.slide')], toc = document.getElementById('toc');
+    if (!toc) return;
+    all.forEach((sl, k) => {
+      const h = sl.querySelector('h2');
+      if (!h || sl === toc.closest('.slide')) return;
+      const li = document.createElement('li');
+      li.innerHTML = '<span class="n">' + (k + 1) + '</span><span>' + h.innerHTML + '</span>';
+      li.onclick = e => { e.stopPropagation(); window.__show && window.__show(k); };
+      toc.appendChild(li);
+    });
+  })();
+  const slides = [...document.querySelectorAll('.slide')];
+  const bar = document.getElementById('bar');
+  let i = Math.min(Math.max(parseInt(location.hash.slice(1), 10) - 1 || 0, 0), slides.length - 1);
+  let overview = false;
+
+  function notesBox() {
+    let box = document.getElementById('notes-box');
+    if (!box) { box = document.createElement('div'); box.id = 'notes-box'; document.body.appendChild(box); }
+    const aside = slides[i].querySelector('.notes');
+    box.innerHTML = aside ? aside.innerHTML : '';
+  }
+  function show(n) {
+    i = Math.min(Math.max(n, 0), slides.length - 1);
+    slides.forEach((s, k) => s.classList.toggle('on', k === i));
+    ['first', 'prev'].forEach(id => document.getElementById(id).disabled = i === 0);
+    ['next', 'last'].forEach(id => document.getElementById(id).disabled = i === slides.length - 1);
+    bar.style.width = ((i + 1) / slides.length * 100) + '%';
+    history.replaceState(null, '', '#' + (i + 1));
+    notesBox();
+    // page number in the corner of every slide but the first
+    slides.forEach((s, k) => {
+      let f = s.querySelector('.foot');
+      if (!f && k > 0) { f = document.createElement('div'); f.className = 'foot'; f.innerHTML = '<span></span><span></span>'; f.firstElementChild.textContent = document.body.dataset.title; s.appendChild(f); }
+      if (f && k > 0) f.lastElementChild.textContent = (k + 1) + ' / ' + slides.length;
+    });
+  }
+  window.__show = show;
+  function toggleOverview() {
+    overview = !overview;
+    const deck = document.getElementById('deck');
+    if (overview) {
+      deck.style.cssText = 'position:static;display:grid;grid-template-columns:repeat(3,1fr);gap:14px;padding:14px;place-items:start';
+      slides.forEach((s, k) => { s.classList.add('on'); s.style.cssText = 'width:100%;height:auto;aspect-ratio:16/9;font-size:9px;cursor:pointer'; s.onclick = () => { toggleOverview(); show(k); }; });
+      document.documentElement.style.overflow = 'auto'; document.body.style.overflow = 'auto';
+    } else {
+      deck.style.cssText = '';
+      slides.forEach(s => { s.style.cssText = ''; s.onclick = null; });
+      document.documentElement.style.overflow = ''; document.body.style.overflow = '';
+      show(i);
+    }
+  }
+  const go = (id, f) => document.getElementById(id).addEventListener('click', e => { e.stopPropagation(); if (!overview) f(); });
+  const outline = Math.max(0, slides.findIndex(s => s.id === 'outline'));
+  go('tocbtn', () => show(outline)); go('first', () => show(0)); go('prev', () => show(i - 1)); go('next', () => show(i + 1)); go('last', () => show(slides.length - 1));
+  document.getElementById('pdf').addEventListener('click', () => { if (overview) toggleOverview(); window.print(); });
+  document.addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (['ArrowRight', 'PageDown', ' ', 'Enter'].includes(e.key)) { e.preventDefault(); if (!overview) show(i + 1); }
+    else if (['ArrowLeft', 'PageUp', 'Backspace'].includes(e.key)) { e.preventDefault(); if (!overview) show(i - 1); }
+    else if (e.key === 't' || e.key === 'T') { if (!overview) show(outline); }
+    else if (e.key === 'Home') show(0);
+    else if (e.key === 'End') show(slides.length - 1);
+    else if (e.key === 'f' || e.key === 'F') { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(); }
+    else if (e.key === 'n' || e.key === 'N') document.body.classList.toggle('show-notes');
+    else if (e.key === 'o' || e.key === 'O' || e.key === 'Escape' && overview) toggleOverview();
+  });
+  document.addEventListener('click', e => {
+    if (overview || e.target.closest('a, button, pre')) return;
+    show(e.clientX > innerWidth / 2 ? i + 1 : i - 1);
+  });
+  show(i);
+})();
+</script>
+</body>
+</html>

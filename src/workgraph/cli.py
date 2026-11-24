@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import click
 import networkx as nx
-from zinet.click_helpers import HELP_OPTION_NAMES, FullHelpGroup
+from zinet.click_helpers import HELP_OPTION_NAMES, FullHelpGroup, version_option
 
 from .analyze import find_gaps
 from . import paths
@@ -605,6 +605,7 @@ def _workspace_options(*extra):
          f"Built on graphify {_graphify_version()} (https://github.com/Graphify-Labs/graphify, PyPI: graphifyy), "
          "which supplies code and document extraction, clustering and graph export.",
     epilog="Run `workgraph COMMAND -h` for the options of one command. Guides: docs/GUIDE in the repository.")
+@version_option("workgraph", "workgraph")
 def cli() -> None:
     pass
 
