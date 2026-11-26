@@ -439,15 +439,61 @@ def p_graflang(project: Project, files: list[Path], proc: Processor) -> dict:
     return out
 
 
+def p_arch(project: Project, files: list[Path], proc: Processor) -> dict:
+    """Architecture graphs (`*.arch.yaml`, see `graf util arch2mmd`), read as plain YAML.
+
+    nodes: `architecture` (the file) and a `component` per node of the graph (doc_id = the node's id, so code can say `# implements: <id>`; ids should be unique across the project's arch files).
+    edges (refs): `contains` (architecture -> component), `requires` / `optional` / `network` between components, as the graph draws them.
+    warnings: the graph's own rule violations (unknown nodes, upward edges, `requires` cycles) when GraphLang is installed to check them."""
+    out = _empty()
+    try:
+        from graphlang.grafu.arch2mmd import validate as _validate
+    except ImportError:
+        _validate = None
+    for f in files:
+        rel = _rel(project, f)
+        try:
+            data = yaml.safe_load(f.read_text(encoding="utf-8", errors="replace"))
+        except yaml.YAMLError as e:
+            out["warnings"].append(f"{rel}: not valid YAML ({str(e).splitlines()[0]})")
+            continue
+        if not isinstance(data, dict) or data.get("arch") != 1:
+            out["warnings"].append(f"{rel}: not an architecture graph (needs `arch: 1`)")
+            continue
+        if _validate:
+            errors, _ = _validate(data)
+            out["warnings"] += [f"{rel}: {e}" for e in errors]
+        aid = "arch_" + make_id(rel)
+        title = str(data.get("title") or data.get("name") or f.name)
+        out["nodes"].append({"id": aid, "label": title, "file_type": "document", "source_file": rel, "kind": "architecture",
+                             "summary": f"architecture graph of {data.get('name', f.name)}", "stages": []})
+        ids: dict[str, str] = {}
+        for layer in data.get("layers") or []:
+            for n in [*(layer.get("nodes") or []), *[m for g in layer.get("groups") or [] for m in g.get("nodes") or []]]:
+                if not isinstance(n, dict) or not n.get("id"):
+                    continue
+                nid = ids[n["id"]] = f"arch_{make_id(rel)}_{make_id(str(n['id']))}"
+                summary = " ".join(str(x) for x in n.get("summary") or [])[:200]
+                out["nodes"].append({"id": nid, "label": str(n.get("name") or n["id"]), "file_type": "document", "source_file": rel, "kind": "component",
+                                     "summary": summary, "stages": [], "doc_id": str(n["id"]),
+                                     **({k: n[k] for k in ("pkg", "repo", "status") if n.get(k)}),
+                                     "layer": layer.get("id"), "rank": layer.get("rank", 0)})
+                out["refs"].append({"source": ("id", aid), "relation": "contains", "target": str(n["id"]), "file": rel})
+        for e in data.get("edges") or []:
+            if isinstance(e, dict) and e.get("from") in ids and e.get("to") in ids:
+                out["refs"].append({"source": ("id", ids[e["from"]]), "relation": e.get("kind", "requires"), "target": str(e["to"]), "file": rel})
+    return out
+
+
 REGISTRY: dict[str, Callable[[Project, list[Path], Processor], dict]] = {
     "ast": p_ast, "frontmatter": p_frontmatter, "annotations": p_annotations, "llm": p_llm,
-    "llm_items": p_llm_items, "claude_memory": p_claude_memory, "graflang": p_graflang,
+    "llm_items": p_llm_items, "claude_memory": p_claude_memory, "graflang": p_graflang, "arch": p_arch,
 }
 
 
 STEP_LABELS = {"ast": "code (tree-sitter)", "frontmatter": "documents", "annotations": "annotations",
                "llm": "LLM extraction", "llm_items": "LLM extraction", "claude_memory": "Claude Code memory",
-               "graflang": "GraphLang files"}
+               "graflang": "GraphLang files", "arch": "architecture graphs"}
 
 
 def run_processors(project: Project, *, semantic: bool = False, steps: list | None = None) -> dict:

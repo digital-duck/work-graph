@@ -52,6 +52,7 @@ dev = ["pytest"]
 
 [project.scripts]
 workgraph = "workgraph.cli:main"
+wgr = "workgraph.cli:main"
 
 [tool.setuptools.package-data]
 workgraph = ["areas/*.yaml", "data/*.md", "recipes/*/*.yaml", "recipes/*/prompts/*.md", "recipes/*/tools/*.py"]
