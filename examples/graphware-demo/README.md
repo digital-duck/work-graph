@@ -13,6 +13,8 @@ A small product that mixes hardware and software, to show work-graph's `design` 
 It has **deliberate gaps**, which the design area reports (the demo's test pins them):
 
 ```bash
+conda activate graf
+cd ~/projects/graf-proj/work-graph/
 workgraph gaps -c examples/graphware-demo/workspace.yaml
 ```
 
@@ -27,6 +29,11 @@ Close a gap, and it disappears from the list: write a design for SPEC-002, add `
 The architecture file is also a picture and a checkable contract (GraphLang's `graf util`):
 
 ```bash
-graf util arch2mmd design/plant-waterer.arch.yaml      # -> plant-waterer.mmd (a Mermaid chart)
+cd ~/projects/graf-proj/work-graph/examples/graphware-demo
 graf util arch2mmd design/plant-waterer.arch.yaml --verify   # arch -> mmd -> arch is lossless
+
+graf util arch2mmd design/plant-waterer.arch.yaml -o out/plant-waterer.mmd
+graf util mmd2img out/plant-waterer.mmd -f pdf 
+
+xdg-open out/plant-waterer.pdf &  # preview arch diagram
 ```

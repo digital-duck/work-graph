@@ -194,6 +194,7 @@
     <li><b>Vocabulary</b>: stages and their flow, legal relations, gap rules, path classifiers.</li>
     <li><b>Processing</b>: which file type goes through which processor and LLM backend, e.g. <code>*.py</code> → tree-sitter, <code>*.md</code> → frontmatter.</li>
     <li>A new area is a new YAML file. Each project in a workspace picks its own pack.</li>
+    <li><b>New: the <code>design</code> pack</b> for products that mix hardware and software. Its design step is an architecture graph (<code>*.arch.yaml</code>), and a part list counts as a build artifact.</li>
   </ul>
 <pre><span class="c">$ workgraph utils areas</span>
 sdlc        Software development lifecycle: requirement → design
@@ -202,8 +203,10 @@ research    Research: question → literature → hypothesis
             → experiment → analysis → writeup
 publishing  Publishing: idea → outline → draft → edit → publish
             → promote
+<span class="h">design      Graphware design lifecycle: idea → spec → design
+            → build → test → release | integrate</span>
 </pre>
-  <aside class="notes">The shipped packs are in src/workgraph/areas. Everything in the sdlc demo is driven by src/workgraph/areas/sdlc.yaml, for example test verifies requirement, and the path rule that files under tests are tagged test.</aside>
+  <aside class="notes">The shipped packs are in src/workgraph/areas. The design pack (src/workgraph/areas/design.yaml) is new: its release and integrate stages both loop back to idea, and its gap rules cover idea, spec and component. Everything in the sdlc demo is driven by src/workgraph/areas/sdlc.yaml, for example test verifies requirement, and the path rule that files under tests are tagged test.</aside>
 </section>
 
 <section class="slide">
@@ -284,6 +287,31 @@ publishing  Publishing: idea → outline → draft → edit → publish
   </div>
   <div class="demo"><b>Demo</b> build acme-shop, run gaps, then show REQ-002 and follow its links</div>
   <aside class="notes">This follows the tutorial and runs in a scratch WORKGRAPH_HOME. The counts come from the tutorial run and depend on doing its steps in order.</aside>
+</section>
+
+<section class="slide">
+  <h2>Demo 2: the design area on a plant waterer</h2>
+  <div class="cols">
+<pre><span class="c">$ workgraph build -c graphware-demo/workspace.yaml</span>
+<span class="h">31 nodes, 97 edges, 6 communities</span>
+[design]
+  idea    {'plant-waterer': 2}
+  spec    {'plant-waterer': 2}
+  design  {'plant-waterer': 6}
+  build   {'plant-waterer': 4}
+  test    {'plant-waterer': 1}
+
+<span class="c">$ workgraph gaps -c graphware-demo/workspace.yaml</span>
+<span class="h">8 gaps, 0 warnings</span>
+<span class="c">$ workgraph show SPEC-002</span></pre>
+    <ul>
+      <li>A sensor, a pump, firmware, a cloud API and an app: <b>hardware and software in one graph</b>.</li>
+      <li>Idea → spec (<code>refines</code>) → component in <code>plant-waterer.arch.yaml</code> (<code>satisfies</code>) → code or <code>bom.md</code> (<code>implements</code>) → test (<code>verifies</code>).</li>
+      <li>Deliberate gaps: IDEA-002 has no spec, SPEC-002 has no design and no test, the app has no build, four components have no test.</li>
+    </ul>
+  </div>
+  <div class="demo"><b>Demo</b> build, list the 8 gaps, then close one: add a design for SPEC-002 and watch the gap disappear</div>
+  <aside class="notes">Same commands as the acme-shop demo, a different pack. The architecture file is also a picture and a contract: graf util arch2mmd draws it as a Mermaid chart. The counts come from examples/graphware-demo and tests/test_design_demo.py pins the 8 gaps.</aside>
 </section>
 
 <section class="slide">
