@@ -1,0 +1,4 @@
+# The design area on a small graphware product: a plant waterer (a sensor and a pump, firmware, a cloud API and an app).
+area: design
+projects:
+  - {name: plant-waterer, path: .}

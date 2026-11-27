@@ -1,0 +1,31 @@
+# The plant waterer as an architecture graph (see `graf util arch2mmd`, `arch-drift`, `arch-gate`). `satisfies:` links a component to the spec it serves.
+arch: 1
+name: plant-waterer
+title: Plant waterer
+rules: {edges_point_down: true, requires_acyclic: true}
+styles:
+  sw: {fill: "#e8f1fb", stroke: "#2f6fb3", color: "#0d2b4a"}
+  hw: {fill: "#fde9e4", stroke: "#c0482c", color: "#4a160a"}
+layers:
+  - id: apps
+    rank: 3
+    title: App
+    nodes:
+      - {id: app, name: app, summary: [phone app, moisture history], status: planned, style: sw}
+  - id: cloud
+    rank: 2
+    title: Cloud
+    nodes:
+      - {id: api, name: api, summary: [stores readings, sends commands], satisfies: [SPEC-001], style: sw}
+  - id: device
+    rank: 1
+    title: Device
+    nodes:
+      - {id: firmware, name: firmware, summary: [reads the sensor, runs the pump], satisfies: [SPEC-001], status: validated, style: sw}
+      - {id: moisture-sensor, name: moisture sensor, summary: [capacitive, 3.3 V], satisfies: [SPEC-001], style: hw}
+      - {id: pump, name: pump, summary: [5 V peristaltic], satisfies: [SPEC-001], status: prototype, style: hw}
+edges:
+  - {from: app, to: api}
+  - {from: api, to: firmware, kind: network, label: MQTT}
+  - {from: firmware, to: moisture-sensor}
+  - {from: firmware, to: pump}

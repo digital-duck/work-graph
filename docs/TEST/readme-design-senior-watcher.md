@@ -1,0 +1,1 @@
+/home/papagame/projects/graf-proj/graph-vision/readme-design-senior-watcher.md

@@ -443,7 +443,8 @@ def p_arch(project: Project, files: list[Path], proc: Processor) -> dict:
     """Architecture graphs (`*.arch.yaml`, see `graf util arch2mmd`), read as plain YAML.
 
     nodes: `architecture` (the file) and a `component` per node of the graph (doc_id = the node's id, so code can say `# implements: <id>`; ids should be unique across the project's arch files).
-    edges (refs): `contains` (architecture -> component), `requires` / `optional` / `network` between components, as the graph draws them.
+    edges (refs): `contains` (architecture -> component), `requires` / `optional` / `network` between components, as the graph draws them, and `satisfies`
+    (component -> spec id) for a component that lists `satisfies: [SPEC-1]`.
     warnings: the graph's own rule violations (unknown nodes, upward edges, `requires` cycles) when GraphLang is installed to check them."""
     out = _empty()
     try:
@@ -479,6 +480,8 @@ def p_arch(project: Project, files: list[Path], proc: Processor) -> dict:
                                      **({k: n[k] for k in ("pkg", "repo", "status") if n.get(k)}),
                                      "layer": layer.get("id"), "rank": layer.get("rank", 0)})
                 out["refs"].append({"source": ("id", aid), "relation": "contains", "target": str(n["id"]), "file": rel})
+                for spec in n.get("satisfies") or []:        # `satisfies: [SPEC-1]` on a component: the design satisfies that spec
+                    out["refs"].append({"source": ("id", nid), "relation": "satisfies", "target": str(spec), "file": rel})
         for e in data.get("edges") or []:
             if isinstance(e, dict) and e.get("from") in ids and e.get("to") in ids:
                 out["refs"].append({"source": ("id", ids[e["from"]]), "relation": e.get("kind", "requires"), "target": str(e["to"]), "file": rel})

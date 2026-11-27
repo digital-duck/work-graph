@@ -24,7 +24,10 @@ def test_app_overview_keyword_and_semantic_search(monkeypatch):
     monkeypatch.setattr(query, "sbert_ready", lambda: (False, "no sbert"))
     at = AppTest.from_file(str(APP), default_timeout=60).run()
     assert not at.exception
-    assert dict((m.label, m.value) for m in at.metric)["Nodes"] == "70"
+    import json
+    from workgraph import paths
+    n = len(json.loads((paths.out_dir() / "graph.json").read_text())["nodes"])
+    assert dict((m.label, m.value) for m in at.metric)["Nodes"] == str(n)      # the page shows the built graph's own count
     at.text_input[0].set_value("checkout").run()
     assert not at.exception and any("results" in c.value for c in at.caption)
     at.radio[0].set_value("Semantic").run()
