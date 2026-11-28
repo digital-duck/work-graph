@@ -112,7 +112,7 @@ def _portable_workspace() -> dict:
     ws_file = paths.default_workspace()
     raw = yaml.safe_load(ws_file.read_text(encoding="utf-8")) if ws_file.exists() else {}
     from .area import legacy_key
-    out = {"area": legacy_key(raw or {}, "area", "domain", "the default workspace", "sdlc"), "projects": []}
+    out = {"area": legacy_key(raw or {}, "area", "domain", "the default workspace", "develop"), "projects": []}
     for p in (raw or {}).get("projects") or []:
         entry = {("area" if k == "domain" else k): v for k, v in p.items() if k != "path"}      # folders differ per machine; `domain` is the old name of `area`
         if "repo" not in entry and p.get("path"):

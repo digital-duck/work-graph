@@ -11,7 +11,7 @@ from . import paths
 STARTER = """# workgraph default workspace: the projects it knows about.
 # Add projects by hand, with `workgraph track <path>`, or automatically through the Claude Code hooks
 # (`workgraph utils claude-setup`). See docs/GUIDE/USER-GUIDE.md.
-area: sdlc
+area: develop
 projects: []
 """
 

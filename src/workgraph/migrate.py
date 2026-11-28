@@ -3,6 +3,7 @@
 0.3.0 renamed two things (docs/DEV/graflang-refactor.md, Phase 0b), in this order:
   1. `domain` (a pack such as sdlc) became `area`:      `domain:` -> `area:` in workspace files and packs, `custom/domains/` -> `custom/areas/`
   2. `layer` (org, product, process, repo) became `domain`: `layer:` -> `domain:` in graph files, the database column, `out/layers/` -> `out/domains/`
+  3. areas are named with a verb: `sdlc` and `design` became `develop`, `publishing` became `publish` (`area:` in workspace files, `process:<area>` in domain files)
 Every step is safe to run twice and reports what it did; `--dry-run` only reports. The loader also reads the old keys for one release, with a warning.
 """
 from __future__ import annotations
@@ -105,6 +106,34 @@ def migrate_domains(workspaces: list[Path], dry: bool = False) -> list[str]:
     return say
 
 
+_OLD_PACKS = {"sdlc": "develop", "design": "develop", "publishing": "publish"}
+_OLD_NAMES = "|".join(_OLD_PACKS)
+_OLD_PROCESS = re.compile(rf"\bprocess:({_OLD_NAMES})\b")
+
+
+def rename_old_packs(text: str) -> str:
+    """`area: sdlc` / `area: design` -> `area: develop`, `area: publishing` -> `area: publish`, in a workspace file or a pack of your own."""
+    return re.sub(rf"(\barea:\s*)({_OLD_NAMES})\b", lambda m: m.group(1) + _OLD_PACKS[m.group(2)], text)
+
+
+def rename_old_process(text: str) -> str:
+    """`process:sdlc` -> `process:develop` (and so on) in a domain file: the process node derived from the pack."""
+    return _OLD_PROCESS.sub(lambda m: "process:" + _OLD_PACKS[m.group(1)], text)
+
+
+def migrate_packs(workspaces: list[Path], dry: bool = False) -> list[str]:
+    """0.3.0 merged `sdlc` and `design` into `develop` and renamed `publishing` to `publish`: rewrite `area:` in workspace files and `process:<area>` in domain files."""
+    say: list[str] = []
+    for ws in workspaces:
+        if ws.exists():
+            _rewrite(ws, rename_old_packs, dry, say, "`area:` old pack name -> new (sdlc/design -> develop, publishing -> publish) in the workspace file")
+    for d in graphs_dirs(workspaces):
+        if d.is_dir():
+            for f in sorted(d.glob("*.y*ml")) + sorted(d.glob("*.json")):
+                _rewrite(f, rename_old_process, dry, say, "`process:` old pack name -> new in the domain file")
+    return say
+
+
 def migrate(workspaces: list[Path], dry: bool = False) -> list[str]:
     """Run every step, in order (areas first: it frees the word `domain`); the list of what was (or, with `dry`, would be) changed."""
     files = [paths.default_workspace(), *workspaces]
@@ -113,4 +142,4 @@ def migrate(workspaces: list[Path], dry: bool = False) -> list[str]:
         if f.resolve() not in seen:
             seen.add(f.resolve())
             unique.append(f)
-    return migrate_areas(unique, dry) + migrate_domains(unique, dry)
+    return migrate_areas(unique, dry) + migrate_domains(unique, dry) + migrate_packs(unique, dry)

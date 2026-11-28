@@ -53,7 +53,7 @@ def project(tmp_path, monkeypatch):
     return p
 
 
-def build(project, tmp_path, area="sdlc"):
+def build(project, tmp_path, area="develop"):
     cfg = tmp_path / "workspace.yaml"
     cfg.write_text(f"area: {area}\nprojects:\n  - {{name: p, path: proj}}\n")
     ws = Workspace.load(cfg)
@@ -104,5 +104,5 @@ def test_gap_rules_of_the_sdlc_pack(project, tmp_path):
 def test_the_research_pack_lists_it_too_and_a_pack_without_it_gets_no_recipe_nodes(project, tmp_path):
     _, M, _ = build(project, tmp_path, area="research")
     assert any(d.get("kind") == "recipe" for _, d in M.nodes(data=True))
-    _, M, _ = build(project, tmp_path, area="publishing")                  # publishing does not list the processor: opt-in
+    _, M, _ = build(project, tmp_path, area="publish")                  # publish does not list the processor: opt-in
     assert not any(d.get("kind") in ("recipe", "part") for _, d in M.nodes(data=True))

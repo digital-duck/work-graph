@@ -1,0 +1,84 @@
+# Area pack: the product lifecycle, for software, hardware or both.
+#
+#   idea -> spec -> design -> build -> test -> release -> operate
+#
+# Every step is a graph: an idea and a spec are documents with frontmatter, the design is a decision record or an `*.arch.yaml` (components and the
+# edges between them; `graf util arch2mmd` draws it, `graf util arch-drift` checks it against the code), build artifacts are code, GraphLang files or a
+# parts list (BOM), tests verify them, and what runs in production feeds the next idea. The pack tags what exists at each step and reports the steps that
+# were skipped. (It replaces the former `sdlc` and `design` packs.)
+area: develop
+label: Product lifecycle (idea to operate)
+
+stages:
+  - {id: idea,    label: Idea,    next: [spec]}
+  - {id: spec,    label: Spec,    next: [design]}
+  - {id: design,  label: Design,  next: [build]}
+  - {id: build,   label: Build,   next: [test]}
+  - {id: test,    label: Test,    next: [release]}
+  - {id: release, label: Release, next: [operate]}
+  - {id: operate, label: Operate, next: [idea]}      # feedback loop: what runs breeds the next idea
+
+# Legal relations between artifacts of different stages. Also the vocabulary for frontmatter keys (`refines: [IDEA-1]`, `satisfies: [REQ-1]`) and
+# code annotations (`# verifies: REQ-1`, `# implements: <component id of an *.arch.yaml>`).
+flow_relations:
+  - {from: spec,    to: idea,    relation: refines}
+  - {from: design,  to: spec,    relation: satisfies}
+  - {from: build,   to: design,  relation: implements}
+  - {from: test,    to: build,   relation: verifies}
+  - {from: test,    to: design,  relation: verifies}
+  - {from: test,    to: spec,    relation: verifies}
+  - {from: release, to: build,   relation: ships}
+  - {from: operate, to: release, relation: observes}
+  - {from: idea,    to: operate, relation: motivated_by}
+
+# "Every <stage> artifact (of these kinds) needs an in/out edge of this relation."
+# Optional: `exclude` globs, `min_symbols` (skip trivial files), `include_llm` (LLM-extracted items are skipped by default).
+expectations:
+  - {stage: idea,   kinds: [idea],                 needs: refines,    direction: in, message: "idea has no spec"}
+  - {stage: spec,   kinds: [spec, requirement],    needs: satisfies,  direction: in, message: "spec has no design"}
+  - {stage: spec,   kinds: [spec, requirement],    needs: verifies,   direction: in, message: "spec has no test"}
+  - {stage: design, kinds: [component],            needs: implements, direction: in, message: "component has no build artifact (add `# implements: <component id>` in its code)"}
+  - {stage: design, kinds: [component],            needs: verifies,   direction: in, message: "component has no test"}
+  - {stage: build,  kinds: [file],                 needs: verifies,   direction: in, message: "code file has no test",
+     min_symbols: 1, exclude: ["**/__init__.py", "**/*.config.*", "**/scripts/**", "**/alembic/**", "**/*.sh", "**/setup.py", "**/conftest.py",
+                "**/*.yaml", "**/*.yml", "**/*.json", "**/*.toml", "**/*.cfg", "**/*.ini"]}   # config and data files are not code, whatever graphify parses
+  - {stage: build,  kinds: [recipe],               needs: verifies,   direction: in, message: "recipe has no test"}
+  - {stage: build,  kinds: [part],                 needs: uses,       direction: in, message: "part is used by no recipe"}
+
+# Path rules -> stage tags (case-insensitive). Every matching rule adds a tag; `default` applies if none matched.
+classifiers:
+  - {stage: idea,    globs: ["**/ideas/**", "**/*idea*.md", "**/*vision*.md", "**/*brainstorm*.md"]}
+  - {stage: spec,    globs: ["**/specs/**", "**/spec*.md", "**/requirements/**", "**/user-stories/**",
+                             "**/*roadmap*.md", "**/*todo*.md", "**/*plan*.md", "**/*backlog*.md"]}
+  - {stage: design,  globs: ["**/*.arch.yaml", "**/adr/**", "**/decisions/**", "**/design/**", "**/architecture/**",
+                             "**/design*.md", "**/*-design*.md", "**/*diagram*.md", "**/claude.md", "**/docs/dev/**"]}
+  - {stage: test,    globs: ["**/tests/**", "**/test/**", "**/test_*", "**/*_test.go", "**/*.spec.*",
+                             "**/*readme-test*.md", "**/*snyk*.md"]}
+  - {stage: release, globs: ["**/CHANGELOG*", "**/.github/workflows/**", "**/Dockerfile*", "**/release/**",
+                             "**/*deploy*.md", "**/*ssl*.md", "**/docs/guide/**"]}
+  - {stage: operate, globs: ["**/runbooks/**", "**/incidents/**", "**/postmortems/**", "**/integration/**", "**/integrate/**"]}
+  - {stage: build,   default: true}
+
+# Generated / run-time noise that is not part of the development knowledge (gitignore syntax).
+ignore: ["**/docs/research/**", "**/docs/archive/**", "**/docs/outreach/**", "**/docs/images/**", "**/logs/**", "**/logs-*/**", "**/*.log", "**/*.pyc", "**/*.db", "**/*.lock", "**/package-lock.json"]
+
+# Processing domain: which artifact types go through which processor.
+#   ast         graphify tree-sitter extraction (code)
+#   frontmatter markdown files; YAML frontmatter -> typed nodes + explicit edges
+#   annotations `# relation: ID` comments in code files -> explicit edges
+#   arch        `*.arch.yaml` architecture graphs -> `architecture` and `component` nodes (GraphLang's schema)
+#   graflang    GraphLang workflows: recipes, parts, prompts, policies
+#   llm         graphify's generic semantic extraction (needs --semantic and a backend)
+#   llm_items   this tool's area prompt: prose -> typed work items (needs --semantic)
+processors:
+  # Claude Code's own memory for the project (~/.claude/projects/<slug>/memory), if there is any
+  - {name: claude-memory, use: claude_memory}
+  - {name: code,          use: ast}
+  - {name: docs,          use: frontmatter, match: ["**/*.md"]}
+  - {name: annotations,   use: annotations, match: ["**/*.py", "**/*.js", "**/*.ts", "**/*.go", "**/*.sql", "**/*.sh"]}
+  - {name: architecture,  use: arch,        match: ["**/*.arch.yaml"]}      # components and the edges between them
+  - {name: graflang,      use: graflang,    match: ["**/*.graph.yaml", "**/*.bind.yaml", "**/graflang.errors.yaml"]}
+  # LLM passes (only with --semantic). `llm_items` uses this pack's own prompt: it reads planning/design
+  # prose and extracts work items as INFERRED nodes tagged with this pack's stages.
+  - {name: doc-items,     use: llm_items,   kinds: [requirement, decision, task],
+     match: ["**/*roadmap*.md", "**/*todo*.md", "**/*plan*.md", "**/design*.md"], backend: cc_cli}

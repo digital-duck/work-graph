@@ -35,7 +35,7 @@ def fetch(url: str) -> Path:
     return dest
 
 
-def workspace_from_sources(sources: list[str], area: str = "sdlc") -> Workspace:
+def workspace_from_sources(sources: list[str], area: str = "develop") -> Workspace:
     """An in-memory workspace with one project per source (local directory or git URL)."""
     dom = Area.load(area)
     projects, seen = [], set()

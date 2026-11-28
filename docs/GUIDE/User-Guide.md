@@ -4,7 +4,7 @@ How to get started and use `workgraph`, a knowledge layer that sits beside Claud
 
 ## What it does
 
-`workgraph` reads your projects (code, markdown notes, planning docs) and builds one **knowledge graph** of everything in them. Each artifact is tagged with the lifecycle **stages** it belongs to (requirement, design, build, test, ...), and links between artifacts (`satisfies`, `implements`, `verifies`, ...) are recorded. Then it answers questions the files alone cannot:
+`workgraph` reads your projects (code, markdown notes, planning docs) and builds one **knowledge graph** of everything in them. Each artifact is tagged with the lifecycle **stages** it belongs to (idea, spec, design, build, test, ...), and links between artifacts (`satisfies`, `implements`, `verifies`, ...) are recorded. Then it answers questions the files alone cannot:
 
 - Which requirements have no design or no tests?
 - Which code files are never tested?
@@ -28,8 +28,8 @@ All three read the same files in the home folder (`~/workgraph`). For a guided w
 | Concept | Meaning |
 |---|---|
 | **Workspace** | A `workspace.yaml` listing your projects (folders or repos). |
-| **Area pack** | A YAML file defining an area: its stages, the legal links between them, the gap rules, path rules, and which processor handles which file type. Shipped: `sdlc`, `research`, `publishing`. |
-| **Stage tags** | Each artifact carries one or more stage tags from the pack's fixed vocabulary, for example `[requirement, design]`. Unknown tags are rejected. |
+| **Area pack** | A YAML file defining an area: its stages, the legal links between them, the gap rules, path rules, and which processor handles which file type. Shipped: `develop`, `research`, `publish`. |
+| **Stage tags** | Each artifact carries one or more stage tags from the pack's fixed vocabulary, for example `[spec, design]`. Unknown tags are rejected. |
 | **Kind** | What an artifact is: `file`, `document`, `requirement`, `decision`, `task`, `symbol`, `external`, ... |
 | **Confidence** | `EXTRACTED` (explicit in the source), `INFERRED` (derived or LLM-suggested), `AMBIGUOUS`. |
 | **Gap** | An artifact missing a link its area pack expects, such as a requirement with no test. |
@@ -37,7 +37,7 @@ All three read the same files in the home folder (`~/workgraph`). For a guided w
 | **Domain file** | A JSON file (with a YAML twin for review) in `<home>/custom/graphs/` that defines a product, org or process domain. See "Domains". |
 | **Home folder** | `~/workgraph` (or `$WORKGRAPH_HOME`): the default workspace, domain files, the built graph, caches and clones. |
 
-Inside the repo domain, the **process nodes** are the stages and projects (`stage:sdlc:requirement` ...) and the **knowledge nodes** are your artifacts. Analysis runs on the knowledge nodes only. Domains are covered below.
+Inside the repo domain, the **process nodes** are the stages and projects (`stage:develop:spec` ...) and the **knowledge nodes** are your artifacts. Analysis runs on the knowledge nodes only. Domains are covered below.
 
 ## Quick start
 
@@ -51,8 +51,8 @@ workgraph build -c examples/workspace.yaml
 
 ```
 57 nodes, 130 edges, 8 communities
-[sdlc]
-  requirement  {'acme-shop': 4}
+[develop]
+  spec         {'acme-shop': 4}
   design       {'acme-shop': 2}
   build        {'acme-shop': 2}
   test         {'acme-shop': 1}
@@ -68,7 +68,7 @@ warning: docs/adr/ADR-002.md: broken reference `satisfies: REQ-099`
 wrote ~/workgraph/out/graph.json
 ```
 
-This is one graph with two areas: `acme-shop` uses the `sdlc` pack, `rq-demo` uses the `research` pack. The table shows how many artifacts each project has in each stage. The `domains:` line shows that the example workspace also loaded the org, product and process domain files that sit next to it in `examples/graphs/`.
+This is one graph with two areas: `acme-shop` uses the `develop` pack, `rq-demo` uses the `research` pack. The table shows how many artifacts each project has in each stage. The `domains:` line shows that the example workspace also loaded the org, product and process domain files that sit next to it in `examples/graphs/`.
 
 ### 2. See the gaps
 
@@ -77,13 +77,13 @@ workgraph gaps -c examples/workspace.yaml
 ```
 
 ```
-[sdlc] code file has no test (1)
+[develop] code file has no test (1)
   - checkout.py  (acme-shop:src/checkout.py)
 
-[sdlc] requirement has no design (1)
+[develop] spec has no design (1)
   - REQ-003: Discount codes  (acme-shop:docs/requirements/REQ-003.md)
 
-[sdlc] requirement has no test (2)
+[develop] spec has no test (2)
   - REQ-002: Customers can check out
   - REQ-003: Discount codes
 
@@ -105,8 +105,8 @@ workgraph open -c examples/acme-shop/workspace.yaml --semantic --adapter cc_cli
 
 ```
 acme-shop:docs/ROADMAP.md (4 open)
-  - [requirement/requirement,test] Checkout: pay for an order
-  - [requirement/requirement,design] Discount codes
+  - [spec/requirement,test] Checkout: pay for an order
+  - [spec/requirement,design] Discount codes
   - [decision/design] Decide between Stripe and Adyen for payments
   - [task/build] Add a nightly job that expires abandoned carts
 ```
@@ -118,21 +118,21 @@ The LLM read `docs/ROADMAP.md`, extracted the unchecked items, and tagged each w
 ```bash
 workgraph build --src ~/projects/my-app
 workgraph gaps  --src https://github.com/some-org/some-repo
-workgraph build --src ~/projects/app-a --src ~/projects/app-b --area sdlc
+workgraph build --src ~/projects/app-a --src ~/projects/app-b --area develop
 ```
 
-`--src` accepts a local folder or a git URL (`https://`, `ssh://`, `git://` or `git@host:path`) and can be repeated. URLs are shallow-cloned into `<home>/src/<name>` (and fast-forwarded on later runs); nothing from the clone is executed. Every `--src` project uses `--area` (default `sdlc`). It cannot be combined with `-c`. The graph is written to `<home>/out/graph.json` like any other build, and `status`, `search` and `ui` then read it.
+`--src` accepts a local folder or a git URL (`https://`, `ssh://`, `git://` or `git@host:path`) and can be repeated. URLs are shallow-cloned into `<home>/src/<name>` (and fast-forwarded on later runs); nothing from the clone is executed. Every `--src` project uses `--area` (default `develop`). It cannot be combined with `-c`. The graph is written to `<home>/out/graph.json` like any other build, and `status`, `search` and `ui` then read it.
 
 ## GraphLang workflows in a project
 
-If a project holds [GraphLang](https://github.com/digital-duck/graflang) workflows (`*.graph.yaml`), the `sdlc` and `research` packs index them (the `graflang` processor; add the same line to your own pack to opt in, and `workgraph utils validate-pack` accepts the gap rules that ask for `uses`, `reads_prompt`, `runs`, `may_add`, `governed_by`, `runs_procedure`, `raises` or `binds`). You get `recipe` and `part` nodes, their prompts, programs, policies and error codes as linked nodes, so `workgraph search`, `show` and `ask` can answer "what uses this prompt" or "which recipe runs this program". Two checks come with it: "recipe has no test" (a test counts when it names the recipe by path, workflow name or folder name in quotes; a test that builds its list of recipes from a folder listing is not seen) and "part is used by no recipe".
+If a project holds [GraphLang](https://github.com/digital-duck/graflang) workflows (`*.graph.yaml`), the `develop` and `research` packs index them (the `graflang` processor; add the same line to your own pack to opt in, and `workgraph utils validate-pack` accepts the gap rules that ask for `uses`, `reads_prompt`, `runs`, `may_add`, `governed_by`, `runs_procedure`, `raises` or `binds`). You get `recipe` and `part` nodes, their prompts, programs, policies and error codes as linked nodes, so `workgraph search`, `show` and `ask` can answer "what uses this prompt" or "which recipe runs this program". Two checks come with it: "recipe has no test" (a test counts when it names the recipe by path, workflow name or folder name in quotes; a test that builds its list of recipes from a folder listing is not seen) and "part is used by no recipe".
 
 ## Using it on your own projects
 
 **1. Write a `workspace.yaml`** anywhere (paths are relative to the file, absolute paths also work):
 
 ```yaml
-area: sdlc                 # default pack for projects that do not say otherwise
+area: develop                 # default pack for projects that do not say otherwise
 projects:
   - {name: concept-book,    path: /home/me/projects/concept-book}
   - {name: conceptbook-app, path: /home/me/projects/conceptbook-app}
@@ -203,7 +203,7 @@ Besides the repo graph, workgraph holds graphs that describe the work around the
 | `org` | `company`, `division`, `department`, `group`, `team`, `person` | who builds and owns it |
 | `process` | `process`, `step` | a delivery process, such as stakeholder interview, requirement spec, design, prototype, build, test, release, feedback |
 
-Every area pack is also a process template, available as `process:<area>` (for example `process:sdlc`) without a domain file.
+Every area pack is also a process template, available as `process:<area>` (for example `process:develop`) without a domain file.
 
 A domain file (shown as YAML; the JSON twin has the same content):
 
@@ -224,7 +224,7 @@ edges:
     target: product:acme/retail/shop
   - source: product:acme/retail/shop
     relation: follows                       # -> a process
-    target: process:sdlc
+    target: process:develop
 ```
 
 Relations between domains: `part_of` (child to parent, inside one domain), `precedes` (process step to the next step), `belongs_to` (repo project to product), `owned_by` (product to org), `follows` (product to process). Nodes are defined once and referenced by id from other files. An id ending in `/**` stands for a node and all its descendants, so `org:acme/engineering/**` as an edge source creates one edge per member.
@@ -315,7 +315,7 @@ Options (not every option applies to every command; `workgraph <command> --help`
 | Option | Meaning |
 |---|---|
 | `--src URL_OR_PATH` | build from a local folder or a git URL (shallow-cloned into `<home>/src`) instead of a workspace file; repeat it for several. Not combinable with `-c` |
-| `--area NAME` | area pack for `--src` projects (default `sdlc`) |
+| `--area NAME` | area pack for `--src` projects (default `develop`) |
 | `-c`, `--config FILE` | workspace file. Default: `./workspace.yaml`, else `<home>/workspace.yaml`. A relative name that is not in the current folder is also looked for in `<home>`, so `-c workspace.yaml` finds your default workspace from anywhere |
 | `--semantic` | also run the LLM processors |
 | `--adapter NAME` | LLM backend: `cc_cli` (subscription), `bedrock` (AWS), or any graphify backend |
@@ -440,7 +440,7 @@ Always run `workgraph utils show-llm --adapter <name>` first if you are unsure: 
 
 ### What the LLM pass does and costs
 
-`--semantic` runs the pack's LLM processors. For the `sdlc` pack, `doc-items` reads planning and design documents (files named like `*roadmap*.md`, `*todo*.md`, `*plan*.md`, `design*.md`) and extracts requirements, decisions and tasks. Each becomes a node with:
+`--semantic` runs the pack's LLM processors. For the `develop` pack, `doc-items` reads planning and design documents (files named like `*roadmap*.md`, `*todo*.md`, `*plan*.md`, `design*.md`) and extracts requirements, decisions and tasks. Each becomes a node with:
 
 - `origin: llm` and `INFERRED` confidence
 - `status: done | open | unknown` as the document states it
@@ -481,7 +481,7 @@ be used by path:
 
 ```yaml
 projects:
-  - {name: mine, path: ., area: /home/me/packs/my-sdlc.yaml}
+  - {name: mine, path: ., area: /home/me/packs/my-develop.yaml}
 ```
 
 The sections of a pack:
@@ -495,22 +495,22 @@ The sections of a pack:
 | `ignore` | default noise patterns |
 | `processors` | which file types go through which processor: `ast` (code), `frontmatter` (markdown), `annotations` (code comments), `llm_items` and `llm` (need `--semantic`). `llm_items` may carry `prompt:` (a prompt file of your own) or `recipe:` (a GraphLang recipe of your own); see the README, "LLM work items" |
 
-Example: treat `docs/specs/` as requirements and require every requirement to have an owner link:
+Example: treat `docs/specs/` as specs and require every spec to have an owner link:
 
 ```yaml
 classifiers:
-  - {stage: requirement, globs: ["**/docs/specs/**"]}
+  - {stage: spec, globs: ["**/docs/specs/**"]}
 expectations:
-  - {stage: requirement, kinds: [requirement], needs: owned_by, direction: in, message: "requirement has no owner"}
+  - {stage: spec, kinds: [requirement], needs: owned_by, direction: in, message: "spec has no owner"}
 flow_relations:
-  - {from: design, to: requirement, relation: satisfies}
+  - {from: design, to: spec, relation: satisfies}
 ```
 
 An expectation can also set `min_symbols` (skip trivial files) and `exclude` (path globs to skip). Run `pytest` after changing a pack; the loader rejects references to unknown stages.
 
-## Areas beyond SDLC
+## Areas beyond the product lifecycle
 
-The same engine works for other areas by switching the pack: `research` (question, literature, hypothesis, experiment, analysis, write-up; code lives in the experiment stage) and `publishing` (idea to promote). Mixed workspaces work: each project picks its own pack, and they land in one graph. `examples/workspace.yaml` is a working mixed example.
+The same engine works for other areas by switching the pack: `research` (question, literature, hypothesis, experiment, analysis, write-up; code lives in the experiment stage) and `publish` (idea to promote). Mixed workspaces work: each project picks its own pack, and they land in one graph. `examples/workspace.yaml` is a working mixed example.
 
 ## Troubleshooting
 

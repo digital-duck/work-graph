@@ -48,7 +48,7 @@ def test_build_uses_default_workspace_and_writes_to_home(capsys):
 
 def test_src_local_path_and_url_helpers(capsys):
     main(["gaps", "--src", str(EX / "acme-shop")])
-    assert "requirement has no design" in capsys.readouterr().out      # REQ-003 has no design (checkout.py is tested, so no code-file gap)
+    assert "spec has no design" in capsys.readouterr().out      # REQ-003 has no design (checkout.py is tested, so no code-file gap)
     assert sources.is_url("https://github.com/a/b.git") and sources.is_url("git@github.com:a/b.git")
     assert not sources.is_url("/some/path") and not sources.is_url("file:///x")
     assert sources.project_name("git@github.com:digital-duck/work-graph.git") == "work-graph"

@@ -6,30 +6,30 @@ from workgraph.area import Area, available_areas
 
 
 def test_all_packs_load_and_are_consistent():
-    assert {"sdlc", "research", "publishing"} <= set(available_areas())
+    assert {"develop", "research", "publish"} <= set(available_areas())
     for name in available_areas():
         d = Area.load(name)
         assert d.stages and d.flow_relations and d.processors
 
 
 def test_classify_multi_tag_and_default():
-    d = Area.load("sdlc")
+    d = Area.load("develop")
     assert d.classify("tests/test_x.py") == ["test"]
     assert d.classify("src/app.py") == ["build"]
-    assert d.classify("docs/design/specs/api.md") == ["requirement", "design"]
+    assert d.classify("docs/design/specs/api.md") == ["spec", "design"]
     assert Area.load("research").classify("scripts/run.py") == ["experiment"]  # code is an experiment there
 
 
 def test_stage_tags_are_constrained():
-    d = Area.load("sdlc")
+    d = Area.load("develop")
     assert d.validate_stages(["build", "test", "build"]) == ["build", "test"]
     with pytest.raises(ValueError, match="unknown stage"):
-        d.validate_stages(["hypothesis"])  # a research stage is not an sdlc stage
+        d.validate_stages(["hypothesis"])  # a research stage is not a develop stage
 
 
 def test_classify_real_world_conventions():
-    d = Area.load("sdlc")
-    assert d.classify("docs/DEV/readme-roadmap.md") == ["requirement", "design"]   # multi-tag
+    d = Area.load("develop")
+    assert d.classify("docs/DEV/readme-roadmap.md") == ["spec", "design"]   # multi-tag
     assert d.classify("DESIGN.md") == ["design"]
     assert d.classify("CLAUDE.md") == ["design"]
     assert d.classify("docs/GUIDE/Tutorial.md") == ["release"]
@@ -74,11 +74,11 @@ processors:
 
 def test_validate_pack_cli_exit_code(tmp_path, capsys):
     from workgraph import cli
-    ok = ["sdlc"]
+    ok = ["develop"]
     bad = tmp_path / "p.yaml"
     bad.write_text("stages: []\n", encoding="utf-8")
     cli.cmd_validate_pack(type("A", (), {"pack": ok})())
-    assert "[ok] sdlc" in capsys.readouterr().out
+    assert "[ok] develop" in capsys.readouterr().out
     with pytest.raises(SystemExit):
         cli.cmd_validate_pack(type("A", (), {"pack": [str(bad)]})())
     assert "[!!]" in capsys.readouterr().out
@@ -103,7 +103,7 @@ def test_a_workspace_file_with_the_old_domain_key_still_loads_and_warns_once(tmp
 def test_a_custom_pack_with_the_old_key_loads_and_validate_pack_says_to_migrate(tmp_path):
     from workgraph import area
     pack = tmp_path / "old.yaml"
-    pack.write_text((Path(area.AREAS_DIR) / "sdlc.yaml").read_text(encoding="utf-8").replace("area: sdlc", "domain: old", 1), encoding="utf-8")
+    pack.write_text((Path(area.AREAS_DIR) / "develop.yaml").read_text(encoding="utf-8").replace("area: develop", "domain: old", 1), encoding="utf-8")
     assert area.Area.load(pack).name == "old"
     assert any("`domain:` is now `area:`" in e for e in area.validate_pack(pack))
 
@@ -120,7 +120,7 @@ def test_migrate_moves_the_custom_packs_and_rewrites_the_old_key_and_is_safe_twi
     assert (paths.custom_areas_dir() / "mine.yaml").read_text(encoding="utf-8").startswith("area: mine")
     assert not (paths.custom_dir() / "domains").exists()
     text = ws.read_text(encoding="utf-8")
-    assert "# my projects" in text and "area: sdlc   # default" in text and "{name: a, path: a, area: research}" in text and "domain" not in text
+    assert "# my projects" in text and "area: develop   # default" in text and "{name: a, path: a, area: research}" in text and "domain" not in text
     assert done and migrate.migrate([ws]) == []                                                                          # the second run finds nothing
 
 
@@ -148,3 +148,20 @@ def test_a_graph_built_before_the_rename_is_refused_with_a_rebuild_message():
     new = nx.MultiDiGraph()
     new.add_node("a", area="sdlc", domain="process")           # new words, hand-built, no mark: fine
     assert query.check_format(new) is new
+
+
+def test_the_old_pack_names_load_develop(capsys):
+    for old in ("sdlc", "design"):
+        assert Area.load(old).name == "develop"
+    assert Area.load("publishing").name == "publish"
+    assert "now `develop`" in capsys.readouterr().err
+    d = Area.load("develop")
+    assert list(d.stages) == ["idea", "spec", "design", "build", "test", "release", "operate"]
+
+
+def test_migrate_rewrites_old_pack_names(tmp_path):
+    from workgraph.migrate import rename_old_packs, rename_old_process
+    assert rename_old_packs("area: sdlc   # default\nprojects:\n  - {name: a, path: a, area: design}\n  - {name: b, path: b, area: research}\n") == \
+        "area: develop   # default\nprojects:\n  - {name: a, path: a, area: develop}\n  - {name: b, path: b, area: research}\n"
+    assert rename_old_process("target: process:sdlc") == "target: process:develop"
+    assert rename_old_packs("area: publishing") == "area: publish" and rename_old_process("process:publishing") == "process:publish"

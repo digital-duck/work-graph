@@ -49,6 +49,10 @@ def legacy_key(raw: dict, new: str, old: str, where: str, default=None):
     return default
 
 
+# Areas are named with a verb. `sdlc` and `design` were merged into `develop` (idea -> spec -> design -> build -> test -> release -> operate), `publishing` became `publish`; the old names still load them.
+LEGACY_AREAS = {"sdlc": "develop", "design": "develop", "publishing": "publish"}
+
+
 def custom_area_files() -> dict[str, Path]:
     """Your own packs: <home>/custom/areas/<name>.yaml (or .yml), by name."""
     d = paths.custom_areas_dir()
@@ -92,7 +96,13 @@ class Area:
     def load(cls, name_or_path: str | Path) -> "Area":
         p = Path(name_or_path)
         if p.suffix not in (".yaml", ".yml"):
-            p = custom_area_files().get(str(name_or_path)) or AREAS_DIR / f"{name_or_path}.yaml"   # yours win
+            name = str(name_or_path)
+            if name in LEGACY_AREAS and name not in custom_area_files():
+                if name not in _WARNED:
+                    _WARNED.add(name)
+                    print(f"workgraph: area `{name}` is now `{LEGACY_AREAS[name]}` (run `workgraph utils migrate` to rewrite your files)", file=sys.stderr)
+                name = LEGACY_AREAS[name]
+            p = custom_area_files().get(name) or AREAS_DIR / f"{name}.yaml"   # yours win
             if not p.exists():
                 raise ValueError(f"unknown area {name_or_path!r}; available: {available_areas()}")
         raw = yaml.safe_load(p.read_text(encoding="utf-8"))
@@ -303,7 +313,7 @@ class Workspace:
     def load(cls, path: str | Path) -> "Workspace":
         path = Path(path)
         raw = yaml.safe_load(path.read_text(encoding="utf-8"))
-        default = legacy_key(raw, "area", "domain", f"workspace file {path.name}", "sdlc")
+        default = legacy_key(raw, "area", "domain", f"workspace file {path.name}", "develop")
         cache: dict[str, Area] = {}
         projects, unresolved = [], []
         for p in raw["projects"]:

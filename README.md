@@ -22,7 +22,7 @@ That knowledge is scattered across repos, docs, tickets, notes, machines, and yo
 ## Vision
 
 1. **One graph, many artifact types.** Code, docs, tickets, decisions, notes, and external references live together and are linked.
-2. **SDLC-aware.** The graph models the lifecycle (requirement → design → implementation → test → release → incident → retro), so traceability comes for free.
+2. **Lifecycle-aware.** The graph models the product lifecycle (idea → spec → design → build → test → release → operate), so traceability comes for free.
 3. **Personal first.** It runs locally, is owned by you, and is plain-file persistent. It is a second brain for how you build.
 4. **Graph-grounded answers.** The LLM retrieves a *subgraph* (a node plus its neighborhood and the paths between nodes) as context, not just top-k text chunks. Answers can cite the nodes they used.
 5. **Beyond coding.** The same engine handles knowledge management: reading notes, research, meeting outcomes, and personal retrospectives.
@@ -35,7 +35,7 @@ That knowledge is scattered across repos, docs, tickets, notes, machines, and yo
 Chat history and context windows are temporary, and each new session starts cold. The graph is **persistent context**: a file that outlives any one conversation and is shared by every tool that reads it.
 
 - **Persistent context for LLMs and coding agents.** Before a task, an agent loads the relevant sub-graph (the requirement, its design decision, the code that implements it, the tests that verify it, the team that owns it) instead of re-discovering them from raw files. Every session starts from the same grounded state.
-- **The graph steers the work.** Gap rules ("requirement has no test"), process stages and open work items tell the agent what to do next. The agent's output (a new design note, a test, an updated status) is written back into the graph, so the next step starts from it.
+- **The graph steers the work.** Gap rules ("spec has no test"), process stages and open work items tell the agent what to do next. The agent's output (a new design note, a test, an updated status) is written back into the graph, so the next step starts from it.
 - **Human in the loop.** LLM-proposed nodes and edges are marked `INFERRED` until a person confirms them in the YAML review format. Agents and people read and write the same artifacts.
 - **Tool-neutral.** Any LLM or coding agent can use the same files, whether it is Claude Code, another assistant or a script. Nothing depends on one tool's private memory.
 
@@ -68,16 +68,16 @@ Today's graph covers repositories. The vision is a set of graphs, each with its 
 | **Org** | who builds and owns it | company > division > department > group > team > person |
 | **Process** | how work is delivered, as a reusable template | stakeholder interview > requirement spec > solution design > prototyping > build > test > release > feedback |
 
-- **The SDLC is one process among many.** The `sdlc`, `research` and `publishing` packs are already small process graphs. A process graph generalizes them, and a new delivery process is a new pack.
+- **The product lifecycle is one process among many.** The `develop`, `research` and `publish` packs are already small process graphs. A process graph generalizes them, and a new delivery process is a new pack.
 - **Template versus instance.** A process graph defines the template ("design follows requirements"). A product's progress through it is an instance with status, owners and artifacts. The two are kept apart so that "what the process says" is never confused with "where we are".
 - **Hierarchies are containment.** Each level is joined to its parent by `part_of`. A **sub-graph** is a node plus its descendants, so a team, a product or a single process stage can be addressed, queried and exported on its own.
-- **Graphs reference each other.** A repo says `belongs_to: product:checkout`. A product says `owned_by: org:acme/payments`. A product says `follows: process:sdlc`. Org and process nodes are defined once and referenced everywhere, so the same team or stage never exists as several copies.
+- **Graphs reference each other.** A repo says `belongs_to: product:checkout`. A product says `owned_by: org:acme/payments`. A product says `follows: process:develop`. Org and process nodes are defined once and referenced everywhere, so the same team or stage never exists as several copies.
 
 ### Graph references
 
 References exist for brevity in the spec. At run time they are always resolved in memory:
 
-1. **Spec time.** A graph file refers to a node or a whole sub-graph in another graph by a namespaced ID (`org:acme/payments`, `process:sdlc`) instead of repeating it.
+1. **Spec time.** A graph file refers to a node or a whole sub-graph in another graph by a namespaced ID (`org:acme/payments`, `process:develop`) instead of repeating it.
 2. **Load time.** The loader resolves every reference and expands sub-graph references, merging all domains into **one in-memory graph**. Each node keeps a `domain` attribute, so queries, clustering and gap analysis work across domains without special cases.
 3. **Integrity.** An unresolvable reference (renamed, moved or deleted target) is reported as a broken reference, like the broken-reference check that already exists for requirements. Stable IDs matter here, because path-style IDs break when a team is reorganized.
 
@@ -107,12 +107,12 @@ The engine is [graphify](https://github.com/Graphify-Labs/graphify), used as a l
 
 `workgraph` is a thin layer that adapts it to an **area** by supplying an *area pack*, a YAML file with two halves:
 
-| Domain | What the pack defines | Example (`sdlc`) |
+| Domain | What the pack defines | Example (`develop`) |
 |---|---|---|
-| **Vocabulary** | stages (a constrained tag set) and their flow, legal relations, gap rules, path classifiers | requirement → design → build → test → release → operate; `test --verifies--> requirement` |
+| **Vocabulary** | stages (a constrained tag set) and their flow, legal relations, gap rules, path classifiers | idea → spec → design → build → test → release → operate; `test --verifies--> spec` |
 | **Processing** | which artifact types go through which processor and LLM backend | `*.py` → tree-sitter; `*.md` → frontmatter; `*.pdf` → LLM (`claude-cli`) |
 
-Shipped packs (`src/workgraph/areas/`): **`sdlc`**, **`research`** (question → literature → hypothesis → experiment → analysis → write-up, where code is an experiment) and **`publishing`** (idea → outline → draft → edit → publish → promote). A new area is a new YAML file. A workspace can mix areas, since each project picks its own pack, and all of them land in one graph.
+Shipped packs (`src/workgraph/areas/`): **`develop`** (the product lifecycle idea → spec → design → build → test → release → operate, for software, hardware or both; it replaces the former `sdlc` and `design` packs, whose names still load it), **`research`** (question → literature → hypothesis → experiment → analysis → write-up, where code is an experiment) and **`publish`** (idea → outline → draft → edit → publish → promote). A new area is a new YAML file. A workspace can mix areas, since each project picks its own pack, and all of them land in one graph.
 
 ### Graph model
 
@@ -127,7 +127,7 @@ Shipped packs (`src/workgraph/areas/`): **`sdlc`**, **`research`** (question →
 - **Annotations**: `# verifies: REQ-001` in any code file does the same.
 - **Derived**: a test file that imports a code file yields an `INFERRED` `verifies` edge, and the rule comes from the pack's `flow_relations` rather than from code.
 - **Gaps**: the pack's `expectations` ("every requirement needs a test") are evaluated as plain graph queries. Rules can skip trivial files (`min_symbols`, `exclude`), and broken references are reported too.
-- **GraphLang files** (the `graflang` processor, listed by the `sdlc` and `research` packs; a pack that does not list it ignores them): `*.graph.yaml`, `*.bind.yaml` and `graflang.errors.yaml` are read as plain YAML (GraphLang itself is not run). A workflow becomes a `recipe` node, or a `part` node when it sits in a subfolder of a folder that holds a graph itself; `bindings`, `error_code`, `policy` and `procedure` nodes follow. Edges: `uses` (recipe to part), `reads_prompt` (to the prompt's own document), `runs` (to the program in a `command:`), `may_add` (a MUTATE catalogue), `governed_by`, `runs_procedure`, `raises` (to the error code's definition), `binds`, and an `INFERRED` `verifies` from a test that names the recipe (its path, its name or its folder in quotes; parts get none). The `sdlc` pack's gap rules: "recipe has no test" and "part is used by no recipe"; build warnings: a prompt declared but unused, a prompt file no graph names, a named file that does not exist, an error code nobody defines. Files in folders the project ignores (`build/`, `logs/`) are skipped quietly.
+- **GraphLang files** (the `graflang` processor, listed by the `develop` and `research` packs; a pack that does not list it ignores them): `*.graph.yaml`, `*.bind.yaml` and `graflang.errors.yaml` are read as plain YAML (GraphLang itself is not run). A workflow becomes a `recipe` node, or a `part` node when it sits in a subfolder of a folder that holds a graph itself; `bindings`, `error_code`, `policy` and `procedure` nodes follow. Edges: `uses` (recipe to part), `reads_prompt` (to the prompt's own document), `runs` (to the program in a `command:`), `may_add` (a MUTATE catalogue), `governed_by`, `runs_procedure`, `raises` (to the error code's definition), `binds`, and an `INFERRED` `verifies` from a test that names the recipe (its path, its name or its folder in quotes; parts get none). The `sdlc` pack's gap rules: "recipe has no test" and "part is used by no recipe"; build warnings: a prompt declared but unused, a prompt file no graph names, a named file that does not exist, an error code nobody defines. Files in folders the project ignores (`build/`, `logs/`) are skipped quietly.
 - **LLM work items** (`--semantic`): the `llm_items` processor reads planning and design prose (roadmaps, todos, design notes) with the pack's own prompt and extracts requirements, decisions and tasks as `INFERRED` nodes (`origin: llm`, with `status: done|open`) tagged with the pack's stages. They link to their source document with `derived_from`, are cached by prompt hash, and don't trigger gap rules until confirmed. The extraction is a [GraphLang](https://github.com/digital-duck/graflang) recipe, `src/workgraph/recipes/extract_items/` (a prompt, plus a small program that takes the JSON out of the reply and keeps only the pack's kinds and stages). To change it, give the processor `prompt: items.md` (a file in `<home>/custom/prompts/`, or a path; the prompt uses `{{in_area}}`, `{{in_kinds}}`, `{{in_stages}}`, `{{in_flow}}`, `{{in_max_items}}`, `{{in_path}}`, `{{in_text}}`) or `recipe: my_items` (a folder in `<home>/custom/recipes/`; it must take the inputs `area, kinds, stages, flow, max_items, path, text` and give the output `items`, JSON text `{"items": [...]}`). `workgraph utils validate-pack` checks both names.
 - **Cross-project links**: byte-identical files get `identical_to` and same-path files that differ get `variant_of`, so clones of a template across repos show up (`workgraph utils clones`).
 - **Ignore rules**: `.gitignore`, `.graphifyignore`, the pack's default `ignore:` (logs, locks, db files) and a per-project `ignore:` list in the workspace file.
@@ -215,7 +215,7 @@ workgraph ask "Which test covers REQ-001?"            # grounded answer citing n
 python -m pytest
 ```
 
-`examples/` holds a small SDLC project (`acme-shop`) and a research project (`rq-demo`) with deliberate gaps, plus a workspace that builds both into one graph. LLM processors are off unless you pass `--semantic`.
+`examples/` holds a small software project (`acme-shop`), a hardware-and-software product (`plant-waterer`) and a research project (`rq-demo`) with deliberate gaps, plus a workspace that builds both into one graph. LLM processors are off unless you pass `--semantic`.
 
 Upgrading a home folder from 0.2.x (`domain:` became `area:`, `layer:` became `domain:`): run `workgraph utils migrate` once (`--dry-run` to preview), then `workgraph build` again. See CHANGELOG.md.
 
@@ -249,7 +249,7 @@ Model and timeout: `WORKGRAPH_MODEL` (any backend; `WORKGRAPH_CC_MODEL` for `cc_
 
 ```
 src/workgraph/
-  areas/*.yaml   # area packs: sdlc, research, publishing
+  areas/*.yaml   # area packs: develop, research, publish
   area.py        # Area / Workspace loading, stage-tag validation, path classifiers
   llm.py           # the LLM seam: backend resolution, billing labels, one `complete()` over dd-llm adapters (cc_cli at home, bedrock at work)
   recipes/         # GraphLang recipes shipped with workgraph (extract_items, ask) and `Recipe`, which runs one through the LLM seam
@@ -261,7 +261,7 @@ src/workgraph/
   viz.py           # workgraph's style and node selection for zinet's drawing engines
   migrate.py       # utils migrate: 0.2.x -> 0.3.0 words; graph.json format version
   cli.py
-examples/          # acme-shop (sdlc), rq-demo (research), workspace.yaml (both)
+examples/          # acme-shop (develop), plant-waterer (develop, hardware and software), rq-demo (research), workspace.yaml (both)
 ```
 
 Multi-graph modules (design in [docs/DEV/README-design.md](https://github.com/digital-duck/work-graph/blob/main/docs/DEV/README-design.md)):
@@ -289,7 +289,7 @@ examples/graphs/   # org and product domain files (JSON canonical, YAML for revi
 ## Hackathon scope
 
 **Must have (MVP)**
-- [x] Area packs (`sdlc`, `research`, `publishing`) with constrained stage tags
+- [x] Area packs (`develop`, `research`, `publish`) with constrained stage tags
 - [x] Ingest code (tree-sitter) and Markdown with frontmatter; annotations; derived `verifies` edges
 - [x] Gap analysis and broken-reference reporting
 - [x] Persist the graph (`graph.json`) and load it back for search, `show`, `status` and the UI

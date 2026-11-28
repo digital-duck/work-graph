@@ -101,7 +101,7 @@
 <section class="slide">
   <div style="margin:auto 0">
     <h1>work-graph</h1>
-    <p class="big">A personal AI assistant built on a knowledge-base graph for SDLC</p>
+    <p class="big">A personal AI assistant built on a knowledge-base graph for the product lifecycle</p>
 
     <br>
     <p class="quiet" style="margin-top:3.2em"><a href="mailto:wen.gong.research@gmail.com" style="color:inherit">wen.gong.research@gmail.com</a></p>
@@ -141,7 +141,7 @@
   <h2>One graph, many artifact types</h2>
   <ul>
     <li>Requirements, design decisions, code, tests, bugs, meetings, papers and half-formed ideas become <b>linked nodes</b>.</li>
-    <li>The graph models the lifecycle, so traceability comes from the links: requirement → design → implementation → test → release.</li>
+    <li>The graph models the lifecycle, so traceability comes from the links: idea → spec → design → build → test → release → operate.</li>
     <li><b>Personal first</b>: it runs locally, you own it, and it persists in plain files.</li>
     <li>Answers are grounded in a <b>subgraph</b> (a node, its neighbourhood, the paths between nodes), not only in top-k text chunks.</li>
     <li>Answers can cite the nodes they used.</li>
@@ -194,19 +194,17 @@
     <li><b>Vocabulary</b>: stages and their flow, legal relations, gap rules, path classifiers.</li>
     <li><b>Processing</b>: which file type goes through which processor and LLM backend, e.g. <code>*.py</code> → tree-sitter, <code>*.md</code> → frontmatter.</li>
     <li>A new area is a new YAML file. Each project in a workspace picks its own pack.</li>
-    <li><b>New: the <code>design</code> pack</b> for products that mix hardware and software. Its design step is an architecture graph (<code>*.arch.yaml</code>), and a part list counts as a build artifact.</li>
+    <li><b>One <code>develop</code> pack</b> for the whole product lifecycle, software, hardware or both. The design step can be an architecture graph (<code>*.arch.yaml</code>), and a part list counts as a build artifact.</li>
   </ul>
 <pre><span class="c">$ workgraph utils areas</span>
-sdlc        Software development lifecycle: requirement → design
-            → build → test → release → operate
+<span class="h">develop     Product lifecycle: idea → spec → design → build
+            → test → release → operate</span>
 research    Research: question → literature → hypothesis
             → experiment → analysis → writeup
-publishing  Publishing: idea → outline → draft → edit → publish
+publish     Publishing: idea → outline → draft → edit → publish
             → promote
-<span class="h">design      Graphware design lifecycle: idea → spec → design
-            → build → test → release | integrate</span>
 </pre>
-  <aside class="notes">The shipped packs are in src/workgraph/areas. The design pack (src/workgraph/areas/design.yaml) is new: its release and integrate stages both loop back to idea, and its gap rules cover idea, spec and component. Everything in the sdlc demo is driven by src/workgraph/areas/sdlc.yaml, for example test verifies requirement, and the path rule that files under tests are tagged test.</aside>
+  <aside class="notes">The shipped packs are in src/workgraph/areas. The develop pack (src/workgraph/areas/develop.yaml) merges the former sdlc and design packs: operate loops back to idea, and its gap rules cover idea, spec, component and code. Everything in the acme-shop demo is driven by it, for example test verifies requirement, and the path rule that files under tests are tagged test.</aside>
 </section>
 
 <section class="slide">
@@ -220,7 +218,7 @@ publishing  Publishing: idea → outline → draft → edit → publish
     <div class="card stack">
       <h3>Knowledge nodes</h3>
       <div>files, symbols, documents, requirements, decisions, questions, hypotheses</div>
-      <div>carry <code>kind</code>, <code>project</code> and <code>stages</code>, a list such as <code>[requirement, design]</code></div>
+      <div>carry <code>kind</code>, <code>project</code> and <code>stages</code>, a list such as <code>[spec, design]</code></div>
     </div>
   </div>
   <ul>
@@ -243,7 +241,7 @@ publishing  Publishing: idea → outline → draft → edit → publish
     <ul>
       <li>Relation names come from the pack's <code>flow_relations</code>.</li>
       <li><b>Derived</b>: when a test file imports a code file, an <code>INFERRED</code> <code>verifies</code> edge is created.</li>
-      <li><b>Gaps</b>: the pack's <code>expectations</code> ("every requirement needs a test") are run as graph queries.</li>
+      <li><b>Gaps</b>: the pack's <code>expectations</code> ("every spec needs a test") are run as graph queries.</li>
       <li>Rules can skip trivial files (<code>min_symbols</code>, <code>exclude</code>). Broken references are reported.</li>
     </ul>
   </div>
@@ -271,8 +269,8 @@ publishing  Publishing: idea → outline → draft → edit → publish
   <div class="cols">
 <pre><span class="c">$ workgraph build -c acme-shop/workspace.yaml</span>
 <span class="h">23 nodes, 65 edges, 5 communities</span>
-[sdlc]
-  requirement  {'acme-shop': 4}
+[develop]
+  spec         {'acme-shop': 4}
   design       {'acme-shop': 2}
   build        {'acme-shop': 2}
   test         {'acme-shop': 1}
@@ -290,28 +288,28 @@ publishing  Publishing: idea → outline → draft → edit → publish
 </section>
 
 <section class="slide">
-  <h2>Demo 2: the design area on a plant waterer</h2>
+  <h2>Demo 2: the same pack on a plant waterer</h2>
   <div class="cols">
-<pre><span class="c">$ workgraph build -c graphware-demo/workspace.yaml</span>
+<pre><span class="c">$ workgraph build -c plant-waterer/workspace.yaml</span>
 <span class="h">31 nodes, 97 edges, 6 communities</span>
-[design]
+[develop]
   idea    {'plant-waterer': 2}
   spec    {'plant-waterer': 2}
   design  {'plant-waterer': 6}
   build   {'plant-waterer': 4}
   test    {'plant-waterer': 1}
 
-<span class="c">$ workgraph gaps -c graphware-demo/workspace.yaml</span>
-<span class="h">8 gaps, 0 warnings</span>
+<span class="c">$ workgraph gaps -c plant-waterer/workspace.yaml</span>
+<span class="h">9 gaps, 0 warnings</span>
 <span class="c">$ workgraph show SPEC-002</span></pre>
     <ul>
       <li>A sensor, a pump, firmware, a cloud API and an app: <b>hardware and software in one graph</b>.</li>
       <li>Idea → spec (<code>refines</code>) → component in <code>plant-waterer.arch.yaml</code> (<code>satisfies</code>) → code or <code>bom.md</code> (<code>implements</code>) → test (<code>verifies</code>).</li>
-      <li>Deliberate gaps: IDEA-002 has no spec, SPEC-002 has no design and no test, the app has no build, four components have no test.</li>
+      <li>Deliberate gaps: IDEA-002 has no spec, SPEC-002 has no design and no test, the app has no build, four components have no test, and <code>api.py</code> has no test file.</li>
     </ul>
   </div>
-  <div class="demo"><b>Demo</b> build, list the 8 gaps, then close one: add a design for SPEC-002 and watch the gap disappear</div>
-  <aside class="notes">Same commands as the acme-shop demo, a different pack. The architecture file is also a picture and a contract: graf util arch2mmd draws it as a Mermaid chart. The counts come from examples/graphware-demo and tests/test_design_demo.py pins the 8 gaps.</aside>
+  <div class="demo"><b>Demo</b> build, list the 9 gaps, then close one: add a design for SPEC-002 and watch the gap disappear</div>
+  <aside class="notes">Same commands and the same develop pack as the acme-shop demo, on a product with hardware. The architecture file is also a picture and a contract: graf util arch2mmd draws it as a Mermaid chart. The counts come from examples/plant-waterer and tests/test_plant_waterer_demo.py pins the 9 gaps.</aside>
 </section>
 
 <section class="slide">
@@ -387,10 +385,10 @@ publishing  Publishing: idea → outline → draft → edit → publish
     <tr><td>Repo</td><td>workspace &gt; project &gt; file &gt; symbol</td></tr>
     <tr><td>Product</td><td>product family &gt; product &gt; application</td></tr>
     <tr><td>Org</td><td>company &gt; division &gt; department &gt; group &gt; team &gt; person</td></tr>
-    <tr><td>Process</td><td>requirement spec &gt; solution design &gt; build &gt; test &gt; release</td></tr>
+    <tr><td>Process</td><td>idea &gt; spec &gt; design &gt; build &gt; test &gt; release &gt; operate</td></tr>
   </table>
   <ul>
-    <li>Each level joins its parent through <code>part_of</code>. References such as <code>org:acme/payments</code> and <code>process:sdlc</code> are resolved at load time.</li>
+    <li>Each level joins its parent through <code>part_of</code>. References such as <code>org:acme/payments</code> and <code>process:develop</code> are resolved at load time.</li>
     <li>All domains merge into <b>one in-memory graph</b>. Unresolvable references are reported as broken.</li>
   </ul>
   <aside class="notes">A repo belongs_to a product, a product is owned_by an org node and follows a process. Org and process nodes are defined once, so the same team never exists as several copies. Examples are in examples/graphs.</aside>

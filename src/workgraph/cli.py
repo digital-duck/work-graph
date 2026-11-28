@@ -369,7 +369,7 @@ def cmd_claude_setup(args) -> None:
 def _docs(args):
     M = query.load_graph(args.graph)
     try:
-        roots = query.roots_from_workspace(_workspace(SimpleNamespace(src=None, config=None, area="sdlc")))
+        roots = query.roots_from_workspace(_workspace(SimpleNamespace(src=None, config=None, area="develop")))
     except (FileNotFoundError, ValueError, KeyError):
         roots = {}
     docs = query.filter_docs(query.build_docs(M, roots), domain=args.domain, project=args.project, kind=args.kind)
@@ -559,7 +559,7 @@ _CONFIG = click.option("-c", "--config", help="workspace file (default: ./worksp
 _ADAPTER = click.option("--adapter", help="LLM backend, e.g. cc_cli (subscription) or bedrock; overrides config")
 _SRC = click.option("--src", multiple=True, metavar="URL_OR_PATH",
                     help="build from a local folder or a git URL instead of a workspace file (repeatable)")
-_AREA_SRC = click.option("--area", default="sdlc", show_default=True, help="area pack for --src projects")
+_AREA_SRC = click.option("--area", default="develop", show_default=True, help="area pack for --src projects")
 _GRAPH = click.option("--graph", help="graph file (default: <home>/out/graph.json)")
 _WITH_PARTS = click.option("--with", "with_parts", help="extra parts, comma separated: org, sessions, llm-cache")
 

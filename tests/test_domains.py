@@ -42,8 +42,8 @@ def test_example_domains_merge_into_one_graph():
     assert {d["domain"] for _, d in M.nodes(data=True)} == {"repo", "process", "product", "org"}
     rels = {(u, d["relation"], v) for u, v, d in M.edges(data=True)}
     assert ("project:acme-shop", "belongs_to", "product:acme/retail/shop/checkout") in rels
-    assert ("product:acme/retail/shop", "follows", "process:sdlc") in rels   # pack-derived process node
-    assert ("stage:sdlc:design", "part_of", "process:sdlc") in rels
+    assert ("product:acme/retail/shop", "follows", "process:develop") in rels   # pack-derived process node
+    assert ("stage:develop:design", "part_of", "process:develop") in rels
     assert not [w for w in warnings if ".json" in w or ".yaml" in w]
 
 
@@ -77,10 +77,10 @@ def test_subgraph_reference_expands_to_descendants(tmp_path):
     ws = _copy_graphs(tmp_path)
     prod = ws / "graphs" / "product.json"
     doc = json.loads(prod.read_text())
-    doc["edges"].append({"source": "product:acme/retail/**", "target": "process:sdlc", "relation": "follows"})
+    doc["edges"].append({"source": "product:acme/retail/**", "target": "process:develop", "relation": "follows"})
     prod.write_text(json.dumps(doc))
     M, _, _ = build_workspace(Workspace.load(ws / "workspace.yaml"))
-    followers = {u for u, v, d in M.edges(data=True) if v == "process:sdlc" and d["relation"] == "follows"}
+    followers = {u for u, v, d in M.edges(data=True) if v == "process:develop" and d["relation"] == "follows"}
     assert {"product:acme/retail", "product:acme/retail/shop", "product:acme/retail/shop/checkout"} <= followers
 
 
@@ -143,7 +143,7 @@ def test_custom_process_domain_file_merges_with_ordered_steps():
         assert (f"process:delivery/{a}", "precedes", f"process:delivery/{b}") in rels
     assert all((f"process:delivery/{s}", "part_of", "process:delivery") in rels for s in steps)
     assert ("product:acme/retail/shop", "follows", "process:delivery") in rels
-    assert ("product:acme/retail/shop", "follows", "process:sdlc") in rels
+    assert ("product:acme/retail/shop", "follows", "process:develop") in rels
 
 
 # ---- the 0.3.0 rename: `layer` (org, product, process, repo) became `domain` -----------------------------------------------------------------------------------

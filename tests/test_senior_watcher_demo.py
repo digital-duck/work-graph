@@ -1,4 +1,4 @@
-"""examples/senior-watcher: the design area on a home-care product made of reused phones, with deliberate gaps the demo's README lists."""
+"""examples/senior-watcher: the develop area on a home-care product made of reused phones, with deliberate gaps the demo's README lists."""
 from pathlib import Path
 
 from workgraph.analyze import find_gaps

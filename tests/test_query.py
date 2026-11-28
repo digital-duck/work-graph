@@ -108,9 +108,9 @@ def test_summary_neighbors_dot_and_gaps(built):
     s = query.summary(M)
     assert set(s["domains"]) == {"repo", "process", "product", "org"} and s["projects"]["acme-shop"] > 0
     nb = query.neighbors(M, "product:acme/retail/shop")
-    assert ("follows", "process:sdlc", "Software development lifecycle") in nb["out"] or any(r == "follows" for r, *_ in nb["out"])
+    assert ("follows", "process:develop", "Software development lifecycle") in nb["out"] or any(r == "follows" for r, *_ in nb["out"])
     assert "digraph" in query.to_dot(M, "product:acme/retail/shop")
-    assert any(g["message"] == "requirement has no test" for g in query.gaps_for(M))
+    assert any(g["message"] == "spec has no test" for g in query.gaps_for(M))
 
 
 def test_cli_status_search_show_context(tmp_path, capsys):

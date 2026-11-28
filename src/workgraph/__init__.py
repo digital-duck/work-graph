@@ -1,1 +1,1 @@
-"""workgraph: SDLC-aware domain on top of graphify's knowledge graph."""
+"""workgraph: product-lifecycle knowledge graph on top of graphify's knowledge graph."""

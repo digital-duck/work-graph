@@ -1,32 +1,32 @@
-# The `design` area demo: what was added, and how to verify it
+# The `develop` area demo: the plant waterer: what was added, and how to verify it
 
 Written 2026-11-27 for review. Everything below was run once by the author of the change; the outputs shown are what that run printed. Nothing is committed yet.
 
 ## 1. What this is
 
-work-graph has a `design` area pack (`src/workgraph/areas/design.yaml`): the prototype of the graphware cycle
+work-graph has a `develop` area pack (`src/workgraph/areas/develop.yaml`, merged from the former `design` and `sdlc` packs): the prototype of the product lifecycle
 
 ```
-idea -> spec -> design -> build -> test -> release | integrate
+idea -> spec -> design -> build -> test -> release -> operate
 ```
 
-This change adds a **demo project** for that pack, `examples/graphware-demo/`, and one small processor feature it needs. The demo is a plant waterer (a moisture sensor, a pump, firmware, a cloud API and a phone app), chosen because it mixes hardware and software. It has deliberate gaps, like `acme-shop` and `rq-demo`, so that the gap report has something to show.
+This change adds a **demo project** for that pack, `examples/plant-waterer/`, and one small processor feature it needs. The demo is a plant waterer (a moisture sensor, a pump, firmware, a cloud API and a phone app), chosen because it mixes hardware and software. It has deliberate gaps, like `acme-shop` and `rq-demo`, so that the gap report has something to show.
 
 ## 2. What changed
 
 | Path | Change |
 |---|---|
-| `examples/graphware-demo/` | **New.** The demo project (11 files, listed in section 3). |
+| `examples/plant-waterer/` | **New.** The demo project (11 files, listed in section 3). |
 | `src/workgraph/processors.py` | `p_arch` (the `arch` processor) now reads `satisfies: [SPEC-1]` on a component and emits a `satisfies` edge from that component to the spec. Without it, nothing could link a design to a spec. |
 | `tests/test_design_demo.py` | **New.** 3 tests that pin the demo (section 6). |
 | `CLAUDE.md` | One sentence: the demo is among the examples whose gaps are deliberate, and why it has its own `workspace.yaml`. |
 
-Not changed on purpose: `examples/workspace.yaml`. Existing tests (`tests/test_pipeline.py::test_multi_area_workspace_gaps`) expect exactly two areas there (`sdlc`, `research`), so the demo has its own workspace file.
+Not changed on purpose: `examples/workspace.yaml`. Existing tests (`tests/test_pipeline.py::test_multi_area_workspace_gaps`) expect exactly two areas there (`develop`, `research`), so the demo has its own workspace file.
 
 ## 3. The demo project
 
 ```
-examples/graphware-demo/
+examples/plant-waterer/
   workspace.yaml                      area: design, one project "plant-waterer"
   README.md                           the demo's own description
   docs/ideas/IDEA-001.md              Plants should water themselves
@@ -60,7 +60,7 @@ Run these from `work-graph/` in the environment that has work-graph, graflang an
 ### 4.1 The gap report (the main check)
 
 ```bash
-WORKGRAPH_HOME=/tmp/wgdemo workgraph gaps -c examples/graphware-demo/workspace.yaml -q
+WORKGRAPH_HOME=/tmp/wgdemo workgraph gaps -c examples/plant-waterer/workspace.yaml -q
 ```
 
 `WORKGRAPH_HOME` points work-graph's home folder at a scratch folder, so the run does not write to your real `~/workgraph`. `-q` hides the progress lines. Expected output (this is what was printed):
@@ -117,7 +117,7 @@ Expected: `7 passed` for the first command; `132 passed` for the whole suite (it
 These use `graf` (graflang), which is a separate package:
 
 ```bash
-cd examples/graphware-demo
+cd examples/plant-waterer
 graf util arch2mmd design/plant-waterer.arch.yaml --check     # expect: OK: design/plant-waterer.arch.yaml
 graf util arch2mmd design/plant-waterer.arch.yaml --verify    # expect: OK: ... -> mmd -> arch is identical
 ```
@@ -129,7 +129,7 @@ To see the picture, `graf util arch2mmd design/plant-waterer.arch.yaml` writes `
 `tests/test_firmware.py` in the demo is a real pytest file. work-graph's own suite never runs it (its `testpaths` is the top-level `tests/`); work-graph only reads it as text to find the `# verifies:` comments. To run it:
 
 ```bash
-cd examples/graphware-demo
+cd examples/plant-waterer
 python -m pytest tests/test_firmware.py -c /dev/null --rootdir=.
 ```
 
@@ -162,7 +162,7 @@ If someone edits the demo and a gap appears or disappears, the first test fails 
 
 ## 7. Known limits and open points
 
-- The plant waterer is an invented example, not anything from your stack. If you want the demo to use a real product of yours, only the files under `examples/graphware-demo/` change.
+- The plant waterer is an invented example, not anything from your stack. If you want the demo to use a real product of yours, only the files under `examples/plant-waterer/` change.
 - The `arch` processor has no check that a `satisfies` target is a spec. It resolves any id (a requirement, an idea). That is consistent with how frontmatter references work, but it is not enforced.
 - Component ids become `doc_id`s, so they must be unique across all `*.arch.yaml` files in one project. The demo has one architecture file, so this is not exercised.
 - Component labels come from the `name` field, so `moisture-sensor` (id) is shown as `moisture sensor` (name) in the gap report.

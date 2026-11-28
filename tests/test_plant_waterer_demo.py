@@ -1,11 +1,11 @@
-"""examples/graphware-demo: the design area on a small hardware-and-software product, with deliberate gaps the demo's README lists."""
+"""examples/plant-waterer: the develop area on a small hardware-and-software product, with deliberate gaps the demo's README lists."""
 from pathlib import Path
 
 from workgraph.analyze import find_gaps
 from workgraph.area import Workspace
 from workgraph.pipeline import build_workspace
 
-DEMO = Path(__file__).parent.parent / "examples" / "graphware-demo"
+DEMO = Path(__file__).parent.parent / "examples" / "plant-waterer"
 
 
 def _gaps():
@@ -17,6 +17,7 @@ def _gaps():
 def test_the_demo_has_exactly_the_gaps_its_readme_lists():
     _, warnings, got = _gaps()
     assert got == {
+        ("code file has no test", "api.py"),
         ("idea has no spec", "IDEA-002"),
         ("spec has no design", "SPEC-002"),
         ("spec has no test", "SPEC-002"),

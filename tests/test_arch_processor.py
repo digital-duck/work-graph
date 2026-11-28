@@ -1,4 +1,4 @@
-"""The `arch` processor and the `design` area: an architecture graph becomes component nodes with edges, tagged `design`; gaps name the skipped steps."""
+"""The `arch` processor and the `develop` area: an architecture graph becomes component nodes with edges, tagged `design`; gaps name the skipped steps."""
 from workgraph.analyze import find_gaps
 from workgraph.area import Workspace, validate_pack
 from workgraph.pipeline import build_workspace
@@ -26,7 +26,7 @@ def _build(tmp_path):
     (p / "src" / "core.py").write_text(CODE)
     (p / "tests" / "test_core.py").write_text(TEST)
     cfg = tmp_path / "workspace.yaml"
-    cfg.write_text("area: design\nprojects:\n  - {name: p, path: proj}\n")
+    cfg.write_text("area: develop\nprojects:\n  - {name: p, path: proj}\n")
     ws = Workspace.load(cfg)
     M, _, warnings = build_workspace(ws)
     return ws, M, warnings
@@ -37,7 +37,7 @@ def _edges(M, rel):
 
 
 def test_design_pack_is_valid():
-    assert validate_pack("design") == []
+    assert validate_pack("develop") == []
 
 
 def test_components_edges_and_stage(tmp_path):

@@ -1,0 +1,4 @@
+# The develop area on a small hardware-and-software product: a plant waterer (a sensor and a pump, firmware, a cloud API and an app).
+area: develop
+projects:
+  - {name: plant-waterer, path: .}

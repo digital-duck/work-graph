@@ -11,7 +11,7 @@ Legend: **built** = implemented and covered by tests or a live run; **partial** 
 | Area | Feature | Status | Verification and limits |
 |---|---|---|---|
 | Core | Repo graph from projects (tree-sitter code, markdown frontmatter, annotations, derived `verifies`) | built | tests; run on `acme-shop` and a 113-file real app |
-| Core | Area packs `sdlc`, `research`, `publishing`; gap rules; broken-reference reports | built | tests |
+| Core | Area packs `develop`, `research`, `publish`; gap rules; broken-reference reports | built | tests |
 | Core | Cross-project `identical_to` / `variant_of` links (`clones`) | built | test |
 | Core | Reload of a built graph for queries (`graph.json`) | built | `query.load_graph`; rebuilding the build pipeline from a saved graph is not needed |
 | LLM | `cc_cli` backend (Claude Code subscription, API variables stripped); `llm_items` extraction with caching | built | unit tests; live run: 4 documents, 26 items, about 5 minutes |
@@ -92,7 +92,7 @@ Template versus instance: a process node is the template. A product's progress t
 
 ## 3. Node IDs
 
-Decision: **readable path-style IDs**, `<domain>:<path>`, for example `org:acme/engineering/payments`, `product:acme/shop/checkout`, `process:sdlc`. References always use these IDs. There is no `aliases` field.
+Decision: **readable path-style IDs**, `<domain>:<path>`, for example `org:acme/engineering/payments`, `product:acme/shop/checkout`, `process:develop`. References always use these IDs. There is no `aliases` field.
 
 Renames are the weak point of path-style IDs, so each domain node also carries a short **`uid`** (8 hex characters, generated once, never edited and never used in references). It exists only so the tools can tell a rename from a deletion:
 
@@ -243,7 +243,7 @@ plugin/            # Claude Code plugin (held back; draft marketplace file in do
 ## 10. Home folder, sources and Claude Code (added after the first build)
 
 - **Home folder.** Because the tool is pip-installed, data does not live in the repo: `$WORKGRAPH_HOME` (default `~/workgraph`) holds `workspace.yaml`, `graphs/` (domain files and `store.sqlite`), `out/graph.json`, `cache/` and `src/`. A workspace file's own `graphs/` folder (as in `examples/`) takes precedence over the home one. graphify's AST cache is redirected into `cache/ast/<project>` so neither projects nor the working directory are written to.
-- **`--src <URL or path>`.** Builds an in-memory workspace (one project per source, default area `sdlc`). URLs (`https://`, `ssh://`, `git://`, `git@host:path`) are shallow-cloned into `src/<name>` and fast-forwarded on later runs. Nothing from the clone is executed.
+- **`--src <URL or path>`.** Builds an in-memory workspace (one project per source, default area `develop`). URLs (`https://`, `ssh://`, `git://`, `git@host:path`) are shallow-cloned into `src/<name>` and fast-forwarded on later runs. Nothing from the clone is executed.
 - **Claude Code.** `SessionStart` and `SessionEnd` hooks call `workgraph hook <event>`. Start tracks the project (git root of the session's cwd, never the home folder), logs the session in the `sessions` table and prints a summary for the session context. End records branch and changed files and starts a detached background build when something changed. Handlers swallow all errors. Installing the hooks into `~/.claude/settings.json` happens only through `claude-setup --write`.
 - **Not done.** An MCP server that lets Claude query the graph on demand (the `mcp` extra is declared but unused), writing session records into the graph as nodes instead of a journal table, and per-project area choice when auto-tracking (new projects default to `sdlc`).
 

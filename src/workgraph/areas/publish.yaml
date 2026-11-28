@@ -1,6 +1,6 @@
-# Area pack: publishing (writing -> audience).
-area: publishing
-label: Publishing
+# Area pack: publish (writing -> audience).
+area: publish
+label: Publish
 
 stages:
   - {id: idea,    label: Idea,    next: [outline]}

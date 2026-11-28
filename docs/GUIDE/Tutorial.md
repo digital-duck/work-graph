@@ -1,10 +1,10 @@
-# Tutorial: the SDLC process in a workgraph
+# Tutorial: the product lifecycle in a workgraph
 
 A hands-on walk through workgraph, a knowledge layer for your software work that sits beside Claude Code. It builds a graph of your projects, their lifecycle, products, teams and processes, and gives Claude Code (and you) a persistent memory of it. The walk uses the `acme-shop` example and the software development lifecycle (SDLC) as the process, then a real codebase, then Claude Code itself. About 40 minutes. The output shown was produced by running the commands in order against the shipped examples, and is abridged where marked. Later steps build on earlier ones (step 3 adds a test file, for example, and the counts in steps 4 and 8 include it), so your numbers match only if you follow the order. Search results from the LLM and embedding steps can differ on your machine.
 
 You will:
 
-1. see the SDLC as a process template
+1. see the product lifecycle as a process template
 2. build the repo graph and trace one requirement through the lifecycle
 3. find the gaps in the process and close them
 4. connect the repo to a product, a team and a process (the domain graphs)
@@ -22,21 +22,21 @@ export WORKGRAPH_HOME=/tmp/tutorial-home     # where graph.json, caches and clon
 cp -r examples /tmp/tutorial && cd /tmp/tutorial
 ```
 
-## 1. The SDLC is a process template
+## 1. The product lifecycle is a process template
 
 ```bash
 workgraph utils areas
 ```
 
 ```
-publishing  Publishing: idea → outline → draft → edit → publish → promote
+publish     Publishing: idea → outline → draft → edit → publish → promote
 research    Research: question → literature → hypothesis → experiment → analysis → writeup
-sdlc        Software development lifecycle: requirement → design → build → test → release → operate
+develop     Product lifecycle (idea to operate): idea → spec → design → build → test → release → operate
 ```
 
-Each line is an **area pack**, a YAML file in `src/workgraph/areas/`. The `sdlc` pack defines the stages, the legal links between them (`design --satisfies--> requirement`, `build --implements--> design`, `test --verifies--> requirement`), the gap rules ("every requirement needs a design and a test") and the path rules that decide which stage a file belongs to (`**/requirements/**` is a requirement, `**/adr/**` is a design, `**/tests/**` is a test). Open `src/workgraph/areas/sdlc.yaml` and read it once; everything below is driven by it.
+Each line is an **area pack**, a YAML file in `src/workgraph/areas/`. The `develop` pack defines the stages, the legal links between them (`spec --refines--> idea`, `design --satisfies--> spec`, `build --implements--> design`, `test --verifies--> spec`), the gap rules ("every spec needs a design and a test") and the path rules that decide which stage a file belongs to (`**/requirements/**` is a spec, `**/adr/**` is a design, `**/tests/**` is a test). Open `src/workgraph/areas/develop.yaml` and read it once; everything below is driven by it.
 
-SDLC is one process among many. A different process, such as research or publishing, is another pack. Section 4 adds a process that is not a pack at all.
+The product lifecycle is one process among many. A different process, such as research or publishing, is another pack. Section 4 adds a process that is not a pack at all.
 
 ## 2. Build the repo graph and trace a requirement
 
@@ -59,14 +59,15 @@ workgraph build -c acme-shop/workspace.yaml
 
 ```
 23 nodes, 65 edges, 5 communities
-[sdlc]
-  requirement  {'acme-shop': 4}
+[develop]
+  idea         {}
+  spec         {'acme-shop': 4}
   design       {'acme-shop': 2}
   build        {'acme-shop': 2}
   test         {'acme-shop': 1}
   release      {}
   operate      {}
-domains: process 7, repo 16
+domains: process 8, repo 16
 warning: docs/adr/ADR-002.md: broken reference `satisfies: REQ-099`
 wrote /tmp/tutorial-home/out/graph.json
 ```
@@ -93,13 +94,13 @@ workgraph gaps -c acme-shop/workspace.yaml
 ```
 
 ```
-[sdlc] code file has no test (1)
+[develop] code file has no test (1)
   - checkout.py  (acme-shop:src/checkout.py)
 
-[sdlc] requirement has no design (1)
+[develop] spec has no design (1)
   - REQ-003: Discount codes  (acme-shop:docs/requirements/REQ-003.md)
 
-[sdlc] requirement has no test (2)
+[develop] spec has no test (2)
   - REQ-002: Customers can check out  (acme-shop:docs/requirements/REQ-002.md)
   - REQ-003: Discount codes  (acme-shop:docs/requirements/REQ-003.md)
 
@@ -109,7 +110,7 @@ workgraph gaps -c acme-shop/workspace.yaml
 4 gaps, 1 warnings
 ```
 
-Each gap is a rule from the pack evaluated as a plain graph query: a node in the `requirement` stage with no incoming `verifies` edge. Close two of them by writing a test for checkout:
+Each gap is a rule from the pack evaluated as a plain graph query: a node in the `spec` stage with no incoming `verifies` edge. Close two of them by writing a test for checkout:
 
 ```bash
 cat > acme-shop/tests/test_checkout.py <<'PY'
@@ -127,10 +128,10 @@ workgraph gaps -c acme-shop/workspace.yaml
 ```
 
 ```
-[sdlc] requirement has no design (1)
+[develop] spec has no design (1)
   - REQ-003: Discount codes  (acme-shop:docs/requirements/REQ-003.md)
 
-[sdlc] requirement has no test (1)
+[develop] spec has no test (1)
   - REQ-003: Discount codes  (acme-shop:docs/requirements/REQ-003.md)
 
 [warnings] (1)
@@ -165,7 +166,7 @@ Domain nodes use readable IDs of the form `<domain>:<path>`, for example `org:ac
     target: org:acme/engineering/commerce/payments
   - source: product:acme/retail/shop
     relation: follows
-    target: process:sdlc                       # the SDLC pack, as a process template
+    target: process:develop                       # the develop pack, as a process template
   - source: product:acme/retail/shop
     relation: follows
     target: process:delivery                   # the stakeholder-to-feedback process
@@ -173,7 +174,7 @@ Domain nodes use readable IDs of the form `<domain>:<path>`, for example `org:ac
 
 Nodes are defined once and referenced by ID from other domains, so the Payments team appears in the graph once and not once per repo or product.
 
-Two processes are linked here. `process:sdlc` was not written by hand: every area pack in the workspace becomes a process template, with its stages `part_of` it. `process:delivery` is a domain file, a process that is not a pack: eight steps (stakeholder interview, requirement spec, solution design, prototyping, build, test, release, feedback), each `part_of` the process and joined by `precedes`. A product can follow several processes.
+Two processes are linked here. `process:develop` was not written by hand: every area pack in the workspace becomes a process template, with its stages `part_of` it. `process:delivery` is a domain file, a process that is not a pack: eight steps (stakeholder interview, requirement spec, solution design, prototyping, build, test, release, feedback), each `part_of` the process and joined by `precedes`. A product can follow several processes.
 
 Check that every reference resolves:
 
@@ -251,7 +252,7 @@ G = nx.node_link_graph(json.load(open("/tmp/tutorial-home/out/graph.json")), edg
 def out(u, rel): return [v for _, v, d in G.out_edges(u, data=True) if d["relation"] == rel]
 def into(v, rel): return [u for u, _, d in G.in_edges(v, data=True) if d["relation"] == rel]
 
-# 1. the SDLC chain for REQ-001
+# 1. the lifecycle chain for REQ-001
 req = next(n for n, d in G.nodes(data=True) if d.get("label", "").startswith("REQ-001"))
 print(into(req, "satisfies"))   # ['acme-shop:doc_adr_001']   the design decision
 print(into(req, "verifies"))    # ['acme-shop:tests_test_cart']   the test
@@ -259,7 +260,7 @@ print(into(req, "verifies"))    # ['acme-shop:tests_test_cart']   the test
 # 2. from the repo up to the product, the team and the processes
 product = out("project:acme-shop", "belongs_to")[0]   # 'product:acme/retail/shop/checkout'
 print(out("product:acme/retail/shop", "owned_by"))    # ['org:acme/engineering/commerce/payments']
-print(out("product:acme/retail/shop", "follows"))     # ['process:sdlc', 'process:delivery']
+print(out("product:acme/retail/shop", "follows"))     # ['process:develop', 'process:delivery']
 ```
 
 The first query is what the README means by *graph-grounded context*: the requirement, its design decision and its test come back as a connected set, without searching text. The second crosses three domains (repo, product, org) and two processes in a few lines. An AI assistant or coding agent can be handed exactly this sub-graph as its context before a task.
@@ -279,8 +280,9 @@ Building 1 project ...
   AST extraction: 113/113 uncached files (100%) [8 workers]
 [1/1] conceptbook-app  1,263 nodes  8.4s   (scan files 6.0s, code (tree-sitter) 2.2s)
 1337 nodes, 5746 edges, 91 communities
-[sdlc]
-  requirement  {'conceptbook-app': 3}
+[develop]
+  idea         {}
+  spec         {'conceptbook-app': 3}
   design       {'conceptbook-app': 15}
   build        {'conceptbook-app': 110}
   test         {'conceptbook-app': 4}
@@ -308,7 +310,7 @@ workgraph gaps --src ~/projects/digital-duck/conceptbook-app
 ```
 
 ```
-[sdlc] code file has no test (73)
+[develop] code file has no test (73)
   - About.js  (conceptbook-app:src/pages/About.js)
   - BulkGenerateBar.js  (conceptbook-app:src/components/BulkGenerateBar.js)
   ...
@@ -341,11 +343,11 @@ workgraph open --src ~/projects/digital-duck/conceptbook-app --semantic --adapte
 ```
 conceptbook-app:DESIGN.md (11 open)
   - [task/build] Move sessions to httpOnly cookie instead of bearer token for security
-  - [requirement/design] Personalization: store API keys encrypted at rest
+  - [spec/design] Personalization: store API keys encrypted at rest
   - [decision/design] Open decision: choose hosting provider
   ...
 conceptbook-app:docs/README-roadmap.md (4 open)
-  - [requirement/requirement] Build reviewable moderator revision workflow for graph.yaml corrections/additions
+  - [spec/requirement] Build reviewable moderator revision workflow for graph.yaml corrections/additions
   - [decision/design] Defer community review/promotion of Learn Anything domains
   ...
 conceptbook-app:docs/README-todo.md (9 open)
@@ -374,7 +376,7 @@ graph: /tmp/tutorial-home/out/graph.json (built 2026-10-18 11:37)
 60 nodes, 143 edges
 domains:   org 6, process 23, product 3, repo 28
 projects: acme-shop 10, rq-demo 6
-gaps:     5  (experiment has no analysis 2, question has no hypothesis 1, requirement has no design 1, requirement has no test 1)
+gaps:     5  (experiment has no analysis 2, question has no hypothesis 1, spec has no design 1, spec has no test 1)
 ```
 
 **Keyword search** matches names, paths, summaries and the first lines of each file. A match in a node's name outranks one in its body, partial words work, and quoted words must appear together:
@@ -388,7 +390,7 @@ workgraph search "checkout test"
    3.15  [repo/decision] ADR-002: Checkout totals computed server-side   (acme-shop:docs/adr/ADR-002.md)
    3.15  [product/application] Checkout service   (:graphs/product.json)
    3.15  [repo/file] checkout.py   (acme-shop:src/checkout.py)
-   2.82  [process/stage] Test   (:areas/sdlc.yaml)
+   2.82  [process/stage] Test   (:areas/develop.yaml)
 ```
 
 Note that one query returned nodes from three domains: the test file you wrote in step 3, a decision, a product application, a code file and a process stage. (Your numbers will match these only if you followed the steps in order.)
@@ -423,10 +425,10 @@ acme-shop:doc_req_002
   kind: requirement
   domain: repo
   project: acme-shop
-  stages: ['requirement']
+  stages: ['spec']
   source_file: docs/requirements/REQ-002.md
   -> belongs_to: acme-shop  [project:acme-shop]
-  -> in_stage: Requirement  [stage:sdlc:requirement]
+  -> in_stage: Spec  [stage:develop:spec]
   <- satisfies: ADR-002: Checkout totals computed server-side  [acme-shop:doc_adr_002]
   <- verifies: test_checkout.py  [acme-shop:tests_test_checkout]
 ```

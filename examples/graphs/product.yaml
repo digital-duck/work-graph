@@ -28,7 +28,7 @@ edges:
     target: org:acme/engineering/commerce/payments
   - source: product:acme/retail/shop
     relation: follows
-    target: process:sdlc
+    target: process:develop
   - source: product:acme/retail/shop
     relation: follows
     target: process:delivery

@@ -1,4 +1,4 @@
 # One graph, two areas: each project declares its own area pack.
 projects:
-  - {name: acme-shop, path: acme-shop, area: sdlc}
+  - {name: acme-shop, path: acme-shop, area: develop}
   - {name: rq-demo,   path: rq-demo,   area: research}

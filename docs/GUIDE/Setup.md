@@ -98,9 +98,9 @@ wg utils areas
 Expected:
 
 ```
-publishing  Publishing: idea → outline → draft → edit → publish → promote
+publish     Publishing: idea → outline → draft → edit → publish → promote
 research    Research: question → literature → hypothesis → experiment → analysis → writeup
-sdlc        Software development lifecycle: requirement → design → build → test → release → operate
+develop     Product lifecycle (idea to operate): idea → spec → design → build → test → release → operate
 ```
 
 Then the tests and a first build on the bundled examples:

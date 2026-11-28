@@ -10,12 +10,12 @@ EX = Path(__file__).parent.parent / "examples"
 def test_multi_area_workspace_gaps():
     ws = Workspace.load(EX / "workspace.yaml")
     M, _, warnings = build_workspace(ws)
-    assert set(stage_summary(M)) == {"sdlc", "research"}
+    assert set(stage_summary(M)) == {"develop", "research"}
     got = {(g["area"], g["message"], g["label"].split(":")[0]) for g in find_gaps(M, ws)}
-    assert ("sdlc", "requirement has no design", "REQ-003") in got
-    assert ("sdlc", "requirement has no test", "REQ-003") in got
+    assert ("develop", "spec has no design", "REQ-003") in got
+    assert ("develop", "spec has no test", "REQ-003") in got
     # tests/test_checkout.py declares `# verifies: REQ-002`, so REQ-002 and src/checkout.py are covered, not gaps
-    assert ("sdlc", "requirement has no test", "REQ-002") not in got
+    assert ("develop", "spec has no test", "REQ-002") not in got
     assert not any(m == "code file has no test" for _, m, _ in got)
     assert ("research", "question has no hypothesis", "Q2") in got
     # covered items are not flagged
@@ -31,7 +31,7 @@ def test_derived_verifies_edge_is_inferred():
 
 def _ws(tmp_path, projects):
     cfg = tmp_path / "workspace.yaml"
-    lines = ["area: sdlc", "projects:"] + [f"  - {{name: {n}, path: {n}}}" for n in projects]
+    lines = ["area: develop", "projects:"] + [f"  - {{name: {n}, path: {n}}}" for n in projects]
     cfg.write_text("\n".join(lines) + "\n")
     return Workspace.load(cfg)
 
@@ -55,7 +55,7 @@ def test_llm_items_area_prompt_cache_and_gap_exemption(tmp_path, monkeypatch):
     def fake(prompt, *, backend, max_tokens):
         calls.append(prompt)
         return "Sure!\n" + json.dumps({"items": [
-            {"title": "Support SSO", "kind": "requirement", "stages": ["requirement", "bogus"], "status": "open"},
+            {"title": "Support SSO", "kind": "requirement", "stages": ["spec", "bogus"], "status": "open"},
             {"title": "Ignore me", "kind": "nonsense", "stages": ["build"]},
         ]})
 
@@ -69,10 +69,10 @@ def test_llm_items_area_prompt_cache_and_gap_exemption(tmp_path, monkeypatch):
     items = [(n, d) for n, d in M.nodes(data=True) if d.get("origin") == "llm"]
     assert len(items) == 1                               # invalid kind dropped
     n, d = items[0]
-    assert d["stages"] == ["requirement"] and d["status"] == "open"   # unknown stage tag rejected
+    assert d["stages"] == ["spec"] and d["status"] == "open"   # unknown stage tag rejected
     assert any(e["relation"] == "derived_from" and e["confidence"] == "INFERRED"
                for *_, e in M.out_edges(n, data=True))
-    assert "allowed stages" in calls[0].lower() and "requirement, design, build" in calls[0]
+    assert "allowed stages" in calls[0].lower() and "idea, spec, design, build" in calls[0]
     assert not [g for g in find_gaps(M, ws) if g["node"] == n]        # LLM items don't trigger gap rules
     build_workspace(ws, semantic=True)
     assert len(calls) == 1                               # second run served from cache

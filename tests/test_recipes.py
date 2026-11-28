@@ -11,7 +11,7 @@ REPLY = "Sure!\n```json\n" + json.dumps({"items": [
     {"title": "Support SSO", "kind": "requirement", "stages": ["requirement", "bogus"], "status": "open", "summary": "s"},
     {"title": "Ignore me", "kind": "nonsense", "stages": ["build"]},
     "not a mapping", {"kind": "task"}]}) + "\n```"
-INPUTS = dict(area="sdlc", kinds="requirement, task", stages="requirement, design", flow="requirement->design", max_items="40",
+INPUTS = dict(area="develop", kinds="requirement, task", stages="requirement, design", flow="requirement->design", max_items="40",
               path="docs/ROADMAP.md", text="# Roadmap\n- [ ] Support SSO")
 
 
@@ -35,7 +35,7 @@ def test_the_recipe_is_valid_and_has_the_interface():
 def test_the_recipe_builds_the_same_prompt_as_the_python_path_and_keeps_only_allowed_items(prompts_seen):
     from workgraph.processors import _ITEMS_PROMPT
     out = recipes.Recipe("extract_items").run(INPUTS, backend="cc_cli")
-    old = _ITEMS_PROMPT.format(area="sdlc", kinds="requirement, task", stages="requirement, design", flow="requirement->design", max_items=40,
+    old = _ITEMS_PROMPT.format(area="develop", kinds="requirement, task", stages="requirement, design", flow="requirement->design", max_items=40,
                                path="docs/ROADMAP.md", text=INPUTS["text"])
     assert prompts_seen == [old]                                         # byte for byte
     items = json.loads(out["items"])["items"]
@@ -64,7 +64,7 @@ def _ws(tmp_path, pack_extra=""):
     (tmp_path / "p" / "docs").mkdir(parents=True)
     (tmp_path / "p" / "docs" / "ROADMAP.md").write_text("# Roadmap\n- [ ] Support SSO\n")
     cfg = tmp_path / "workspace.yaml"
-    cfg.write_text("area: sdlc\nprojects:\n  - {name: p, path: p}\n")
+    cfg.write_text("area: develop\nprojects:\n  - {name: p, path: p}\n")
     return Workspace.load(cfg)
 
 
@@ -104,7 +104,7 @@ def test_a_custom_recipe_in_home_wins_and_a_custom_prompt_replaces_the_prompt(tm
     custom.mkdir(parents=True, exist_ok=True)
     (custom / "items.md").write_text("PACK {{in_area}} {{in_path}}\n")
     recipes.Recipe("extract_items", prompt="items.md").run(INPUTS, backend="cc_cli")
-    assert prompts_seen[-1].startswith("PACK sdlc docs/ROADMAP.md")
+    assert prompts_seen[-1].startswith("PACK develop docs/ROADMAP.md")
     assert recipes.check_prompt("items.md") is None and "not found" in recipes.check_prompt("zzz.md")
 
 

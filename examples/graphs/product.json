@@ -44,7 +44,7 @@
     },
     {
       "source": "product:acme/retail/shop",
-      "target": "process:sdlc",
+      "target": "process:develop",
       "relation": "follows"
     },
     {
